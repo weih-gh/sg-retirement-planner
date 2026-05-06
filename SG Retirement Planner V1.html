@@ -1,0 +1,1922 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SG Retirement Planner</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+/* ── CSS custom properties (light & dark) ── */
+:root{
+  --bg:#f7f8fa;--surface:#fff;--surface2:#f5f7fa;--border:#e8e8e8;--border2:#d4d4d4;
+  --text:#1a1a1a;--text2:#555;--text3:#888;--text4:#aaa;
+  --pre-bg:#f5f5f5;--pre-border:#e0e0e0;
+  --row-even:#fafafa;--ret-row:#eaf2fd;--ret-text:#1a6fca;
+  --accent:#1a6fca;--accent-hover:#155bb5;
+  --ok-bg:#e8f5ec;--ok-border:#34a853;--ok-text:#1e7e34;--ok-sub:#2e9e44;
+  --warn-bg:#fff7e6;--warn-border:#fb8c00;--warn-text:#c77b00;--warn-sub:#e09000;
+  --danger-bg:#fde8e8;--danger-border:#e53935;--danger-text:#b71c1c;--danger-sub:#e53935;
+  --blue-bg:#eaf2fd;--blue-border:#c0d9f7;--blue-text:#1a6fca;
+  --green-bg:#e8f5ec;--green-border:#b8e0c4;--green-text:#1e8c3a;
+  --amber-bg:#fff7e6;--amber-border:#ffd98a;--amber-text:#c77b00;
+  --purple-bg:#f3f0fd;--purple-border:#c9bdf7;--purple-text:#6c3fc7;
+  --ms-done-bg:#e8f5ec;--ms-soon-bg:#eaf2fd;--ms-far-bg:#f0f0f0;
+  --formula-bg:#f5f7fa;--formula-th:#f0f4fa;
+  --tbl-header:#1a6fca;--shadow:rgba(0,0,0,.04);
+}
+@media(prefers-color-scheme:dark){:root{
+  --bg:#0f1117;--surface:#1c1e26;--surface2:#22242e;--border:#2e3040;--border2:#3a3c4e;
+  --text:#e8eaf0;--text2:#b0b4c8;--text3:#7a7f96;--text4:#555a72;
+  --pre-bg:#181a22;--pre-border:#2e3040;
+  --row-even:#1e2030;--ret-row:#1a2a42;--ret-text:#6aabff;
+  --accent:#3d8bff;--accent-hover:#2a75f0;
+  --ok-bg:#0d2218;--ok-border:#1e6b3a;--ok-text:#4ecb7a;--ok-sub:#3aaa60;
+  --warn-bg:#241800;--warn-border:#8a5200;--warn-text:#ffb340;--warn-sub:#e09020;
+  --danger-bg:#280d0d;--danger-border:#8a1f1f;--danger-text:#ff7070;--danger-sub:#e05050;
+  --blue-bg:#0e1e38;--blue-border:#1e3a6a;--blue-text:#6aabff;
+  --green-bg:#0d2218;--green-border:#1e6b3a;--green-text:#4ecb7a;
+  --amber-bg:#241800;--amber-border:#8a5200;--amber-text:#ffb340;
+  --purple-bg:#1a1030;--purple-border:#4a3080;--purple-text:#b090ff;
+  --ms-done-bg:#0d2218;--ms-soon-bg:#0e1e38;--ms-far-bg:#22242e;
+  --formula-bg:#181a22;--formula-th:#1e2030;
+  --tbl-header:#1a4fa0;--shadow:rgba(0,0,0,.25);
+}}
+/* Manual dark override — takes precedence over system preference */
+[data-theme="dark"]{
+  --bg:#0f1117;--surface:#1c1e26;--surface2:#22242e;--border:#2e3040;--border2:#3a3c4e;
+  --text:#e8eaf0;--text2:#b0b4c8;--text3:#7a7f96;--text4:#555a72;
+  --pre-bg:#181a22;--pre-border:#2e3040;
+  --row-even:#1e2030;--ret-row:#1a2a42;--ret-text:#6aabff;
+  --accent:#3d8bff;--accent-hover:#2a75f0;
+  --ok-bg:#0d2218;--ok-border:#1e6b3a;--ok-text:#4ecb7a;--ok-sub:#3aaa60;
+  --warn-bg:#241800;--warn-border:#8a5200;--warn-text:#ffb340;--warn-sub:#e09020;
+  --danger-bg:#280d0d;--danger-border:#8a1f1f;--danger-text:#ff7070;--danger-sub:#e05050;
+  --blue-bg:#0e1e38;--blue-border:#1e3a6a;--blue-text:#6aabff;
+  --green-bg:#0d2218;--green-border:#1e6b3a;--green-text:#4ecb7a;
+  --amber-bg:#241800;--amber-border:#8a5200;--amber-text:#ffb340;
+  --purple-bg:#1a1030;--purple-border:#4a3080;--purple-text:#b090ff;
+  --ms-done-bg:#0d2218;--ms-soon-bg:#0e1e38;--ms-far-bg:#22242e;
+  --formula-bg:#181a22;--formula-th:#1e2030;
+  --tbl-header:#1a4fa0;--shadow:rgba(0,0,0,.25);
+}
+/* Manual light override */
+[data-theme="light"]{
+  --bg:#f7f8fa;--surface:#fff;--surface2:#f5f7fa;--border:#e8e8e8;--border2:#d4d4d4;
+  --text:#1a1a1a;--text2:#555;--text3:#888;--text4:#aaa;
+  --pre-bg:#f5f5f5;--pre-border:#e0e0e0;
+  --row-even:#fafafa;--ret-row:#eaf2fd;--ret-text:#1a6fca;
+  --accent:#1a6fca;--accent-hover:#155bb5;
+  --ok-bg:#e8f5ec;--ok-border:#34a853;--ok-text:#1e7e34;--ok-sub:#2e9e44;
+  --warn-bg:#fff7e6;--warn-border:#fb8c00;--warn-text:#c77b00;--warn-sub:#e09000;
+  --danger-bg:#fde8e8;--danger-border:#e53935;--danger-text:#b71c1c;--danger-sub:#e53935;
+  --blue-bg:#eaf2fd;--blue-border:#c0d9f7;--blue-text:#1a6fca;
+  --green-bg:#e8f5ec;--green-border:#b8e0c4;--green-text:#1e8c3a;
+  --amber-bg:#fff7e6;--amber-border:#ffd98a;--amber-text:#c77b00;
+  --purple-bg:#f3f0fd;--purple-border:#c9bdf7;--purple-text:#6c3fc7;
+  --ms-done-bg:#e8f5ec;--ms-soon-bg:#eaf2fd;--ms-far-bg:#f0f0f0;
+  --formula-bg:#f5f7fa;--formula-th:#f0f4fa;
+  --tbl-header:#1a6fca;--shadow:rgba(0,0,0,.04);
+}
+/* ── Reset & base ── */
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+html{font-size:14px;}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;}
+/* ── Layout ── */
+.page{max-width:980px;margin:0 auto;padding:1.5rem 1rem 4rem;}
+h1{font-size:20px;font-weight:700;margin-bottom:4px;}
+.subtitle{font-size:12px;color:var(--text3);margin-bottom:1.25rem;}
+/* ── Toolbar ── */
+.toolbar{display:flex;align-items:center;gap:6px;margin-bottom:1.5rem;flex-wrap:wrap;}
+.toolbar-right{margin-left:auto;display:flex;gap:6px;flex-wrap:wrap;}
+.icon-btn{display:flex;align-items:center;gap:5px;padding:7px 12px;border-radius:8px;font-size:12px;font-weight:500;cursor:pointer;font-family:inherit;border:1.5px solid var(--border);background:var(--surface);color:var(--text2);transition:all .15s;white-space:nowrap;}
+.icon-btn:hover{border-color:var(--accent);color:var(--accent);}
+.icon-btn.primary{background:var(--accent);color:#fff;border-color:var(--accent);}
+.icon-btn.primary:hover{background:var(--accent-hover);}
+.icon-btn .lbl{display:inline;}
+.save-indicator{font-size:11px;color:var(--text4);display:flex;align-items:center;gap:5px;}
+.save-dot{width:7px;height:7px;border-radius:50%;background:var(--text4);transition:background .4s;}
+.save-dot.saved{background:var(--ok-text);}
+/* ── Dark mode toggle ── */
+.dm-btn{background:none;border:1.5px solid var(--border);border-radius:8px;padding:6px 10px;cursor:pointer;font-size:16px;line-height:1;color:var(--text2);transition:border-color .15s;}
+.dm-btn:hover{border-color:var(--accent);}
+/* ── Collapse ── */
+.collapse-section{margin-bottom:1.25rem;}
+.collapse-header{display:flex;align-items:center;gap:8px;cursor:pointer;user-select:none;padding:4px 0 8px;}
+.collapse-header:hover .collapse-title{color:var(--accent);}
+.collapse-title{font-size:10px;font-weight:700;color:var(--text3);letter-spacing:.1em;text-transform:uppercase;transition:color .15s;}
+.collapse-arrow{width:14px;height:14px;display:flex;align-items:center;justify-content:center;color:var(--text4);transition:transform .22s,color .15s;flex-shrink:0;}
+.collapse-header:hover .collapse-arrow{color:var(--accent);}
+.collapse-section.closed .collapse-arrow{transform:rotate(-90deg);}
+.collapse-body{overflow:hidden;transition:max-height .32s ease,opacity .25s ease;max-height:5000px;opacity:1;}
+.collapse-section.closed .collapse-body{max-height:0;opacity:0;pointer-events:none;}
+/* ── Cards ── */
+.card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:1rem 1.1rem;margin-bottom:.875rem;box-shadow:0 1px 3px var(--shadow);}
+.card-hd{font-size:14px;font-weight:600;margin-bottom:12px;color:var(--text);}
+/* ── Grids — responsive ── */
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+.g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;}
+.g4{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;}
+.g5{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;}
+@media(max-width:600px){
+  .g2,.g3,.g4,.g5{grid-template-columns:1fr 1fr;}
+  .g3>*:nth-child(3n):last-child,.g4>*:last-child,.g5>*:last-child{grid-column:span 2;}
+}
+@media(max-width:400px){.g2,.g3,.g4,.g5{grid-template-columns:1fr;}.g3>*,.g4>*,.g5>*{grid-column:auto!important;}}
+/* ── Field ── */
+.field{display:flex;flex-direction:column;gap:4px;}
+.field>label{font-size:11px;color:var(--text3);}
+.sub-hd{font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin:14px 0 8px;padding-top:10px;border-top:1px solid var(--border);}
+/* ── Input group ── */
+.ig{display:flex;align-items:stretch;border:1px solid var(--border2);border-radius:8px;overflow:hidden;background:var(--surface);transition:border-color .15s,box-shadow .15s;}
+.ig:focus-within{border-color:var(--accent);box-shadow:0 0 0 3px rgba(26,111,202,.15);}
+.ig.disabled{opacity:.4;pointer-events:none;background:var(--surface2);}
+.ig .pre,.ig .suf{padding:0 9px;font-size:12px;color:var(--text3);background:var(--pre-bg);display:flex;align-items:center;flex-shrink:0;user-select:none;border-right:1px solid var(--pre-border);line-height:1;}
+.ig .suf{border-right:none;border-left:1px solid var(--pre-border);}
+.ig input,.ig select{flex:1;border:none;outline:none;background:transparent;padding:7px 9px;font-size:13px;color:var(--text);font-family:inherit;min-width:0;width:100%;}
+.ig select{cursor:pointer;}
+.ig input:disabled,.ig select:disabled{cursor:not-allowed;color:var(--text4);}
+/* ── Toggle buttons ── */
+.trow{display:flex;gap:8px;margin-bottom:1.25rem;flex-wrap:wrap;}
+.tbtn{background:var(--surface)!important;color:var(--text2)!important;border:2px solid var(--border)!important;border-radius:8px;padding:7px 18px;font-size:13px;font-weight:500;cursor:pointer;font-family:inherit;transition:all .15s;outline:none;-webkit-appearance:none;appearance:none;}
+.tbtn:hover:not(.on){border-color:var(--accent)!important;color:var(--accent)!important;}
+.tbtn.on{background:var(--accent)!important;color:#fff!important;border-color:var(--accent)!important;}
+/* ── Person tabs ── */
+.ptabs-wrap{border-bottom:1px solid var(--border);margin-bottom:1rem;}
+.ptabs{display:flex;}
+.ptab{background:none;border:none;border-bottom:3px solid transparent;padding:8px 18px;font-size:13px;font-weight:500;cursor:pointer;color:var(--text3);font-family:inherit;transition:color .15s,border-color .15s;outline:none;}
+.ptab.on{color:var(--accent);border-bottom-color:var(--accent);}
+/* ── Chart tabs ── */
+.vtabs{display:flex;gap:8px;margin-bottom:1rem;flex-wrap:wrap;}
+.vtab{background:var(--surface)!important;color:var(--text2)!important;border:2px solid var(--border)!important;border-radius:8px;padding:5px 12px;font-size:12px;font-weight:500;cursor:pointer;font-family:inherit;outline:none;-webkit-appearance:none;appearance:none;}
+.vtab.on{background:var(--accent)!important;color:#fff!important;border-color:var(--accent)!important;}
+/* ── Divider / slider ── */
+.divider{border:none;border-top:1px solid var(--border);margin:1.5rem 0;}
+.sl-wrap{display:flex;flex-direction:column;gap:5px;}
+.sl-lbl{font-size:11.5px;color:var(--text3);display:flex;justify-content:space-between;}
+.sl-lbl strong{font-weight:600;color:var(--text);}
+/* ── Metrics ── */
+.metrics-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:1.25rem;}
+@media(max-width:700px){.metrics-grid{grid-template-columns:1fr 1fr;}}
+@media(max-width:400px){.metrics-grid{grid-template-columns:1fr;}}
+.metric{border-radius:10px;padding:12px;background:var(--surface2);border:1px solid var(--border);}
+.metric .ml{font-size:10px;font-weight:600;color:var(--text3);margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em;}
+.metric .mv{font-size:17px;font-weight:700;color:var(--text);line-height:1.2;}
+.metric .ms{font-size:10.5px;color:var(--text4);margin-top:3px;}
+.metric.blue{background:var(--blue-bg);border-color:var(--blue-border);}.metric.blue .ml,.metric.blue .mv{color:var(--blue-text);}
+.metric.green{background:var(--green-bg);border-color:var(--green-border);}.metric.green .ml,.metric.green .mv{color:var(--green-text);}
+.metric.amber{background:var(--amber-bg);border-color:var(--amber-border);}.metric.amber .ml,.metric.amber .mv{color:var(--amber-text);}
+.metric.purple{background:var(--purple-bg);border-color:var(--purple-border);}.metric.purple .ml,.metric.purple .mv{color:var(--purple-text);}
+/* ── FIRE banner ── */
+.fbanner{border-radius:10px;padding:13px 15px;margin-bottom:1rem;border:1.5px solid;}
+.fbanner.ok{background:var(--ok-bg);border-color:var(--ok-border);}.fbanner.ok .ft{color:var(--ok-text);}.fbanner.ok .fs{color:var(--ok-sub);}
+.fbanner.warn{background:var(--warn-bg);border-color:var(--warn-border);}.fbanner.warn .ft{color:var(--warn-text);}.fbanner.warn .fs{color:var(--warn-sub);}
+.fbanner.danger{background:var(--danger-bg);border-color:var(--danger-border);}.fbanner.danger .ft{color:var(--danger-text);}.fbanner.danger .fs{color:var(--danger-sub);}
+.ft{font-size:14px;font-weight:600;margin-bottom:4px;}
+.fs{font-size:12px;line-height:1.6;}
+/* ── Per-person status banners ── */
+.person-banners{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:1rem;}
+@media(max-width:560px){.person-banners{grid-template-columns:1fr;}}
+.pbanner{border-radius:8px;padding:10px 13px;border:1px solid;}
+.pbanner.ok{background:var(--ok-bg);border-color:var(--ok-border);}
+.pbanner.ok .pbt{color:var(--ok-text);}.pbanner.ok .pbs{color:var(--ok-sub);}
+.pbanner.warn{background:var(--warn-bg);border-color:var(--warn-border);}
+.pbanner.warn .pbt{color:var(--warn-text);}.pbanner.warn .pbs{color:var(--warn-sub);}
+.pbanner.danger{background:var(--danger-bg);border-color:var(--danger-border);}
+.pbanner.danger .pbt{color:var(--danger-text);}.pbanner.danger .pbs{color:var(--danger-sub);}
+.pbt{font-size:12px;font-weight:600;margin-bottom:3px;}
+.pbs{font-size:11.5px;line-height:1.5;}
+/* ── Legend ── */
+.legend{display:flex;flex-wrap:wrap;gap:12px;margin-top:10px;font-size:12px;color:var(--text3);}
+.legend span{display:flex;align-items:center;gap:5px;}
+.ldot{width:10px;height:10px;border-radius:3px;display:inline-block;flex-shrink:0;}
+.ldash{width:16px;height:0;border-top:2px dashed;display:inline-block;vertical-align:middle;flex-shrink:0;}
+/* ── Milestones ── */
+.ms-group-hd{font-size:10px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.06em;margin:16px 0 10px;padding-bottom:6px;border-bottom:1px solid var(--border);}
+.ms-group-hd:first-child{margin-top:0;}
+.ms-item{margin-bottom:15px;}.ms-item:last-child{margin-bottom:0;}
+.ms-hd{display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;gap:8px;}
+.ms-name{font-size:13px;font-weight:500;display:flex;align-items:center;gap:6px;flex-wrap:wrap;color:var(--text);}
+.ms-badge{font-size:10px;padding:2px 7px;border-radius:20px;font-weight:600;white-space:nowrap;}
+.ms-badge.done{background:var(--ms-done-bg);color:var(--ok-text);}
+.ms-badge.soon{background:var(--ms-soon-bg);color:var(--accent);}
+.ms-badge.far{background:var(--ms-far-bg);color:var(--text3);}
+.ms-amt{font-size:11px;color:var(--text4);white-space:nowrap;}
+.ms-bar-bg{background:var(--border);border-radius:5px;height:7px;overflow:hidden;}
+.ms-bar-fg{height:7px;border-radius:5px;transition:width .4s ease;}
+.ms-sub{font-size:11px;color:var(--text4);margin-top:3px;display:flex;justify-content:space-between;gap:8px;}
+/* ── Table ── */
+.tbl-outer{overflow-x:auto;border-radius:10px;border:1px solid var(--border);box-shadow:0 1px 3px var(--shadow);-webkit-overflow-scrolling:touch;}
+table{border-collapse:collapse;width:100%;font-size:12px;min-width:900px;}
+thead tr{background:var(--tbl-header);}
+thead th{color:#fff;font-size:10px;font-weight:600;padding:9px 10px;text-align:right;white-space:nowrap;}
+thead th:first-child{text-align:left;padding-left:14px;}
+tbody tr{border-bottom:1px solid var(--border);}
+tbody tr:last-child{border-bottom:none;}
+tbody tr:nth-child(even){background:var(--row-even);}
+tbody tr.ret-row{background:var(--ret-row)!important;}
+tbody td{padding:7px 10px;text-align:right;color:var(--text2);white-space:nowrap;font-size:12px;}
+tbody td:first-child{text-align:left;font-weight:600;padding-left:14px;color:var(--text);}
+tbody tr.ret-row td{color:var(--ret-text);}
+.c-pos{color:var(--ok-text)!important;}.c-neg{color:var(--danger-sub)!important;}.c-dim{color:var(--text4)!important;}
+.tbl-note{font-size:11px;color:var(--text4);margin-top:8px;line-height:1.7;}
+.cpf-note{font-size:11px;color:var(--text4);margin-top:8px;line-height:1.5;}
+.foot-note{font-size:11px;color:var(--text4);margin-top:1.5rem;line-height:1.7;}
+/* ── Monte Carlo ── */
+.mc-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:1rem;}
+@media(max-width:600px){.mc-stats{grid-template-columns:1fr 1fr;}}
+.mc-stat{background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px;}
+.mc-stat .ml{font-size:10px;font-weight:600;color:var(--text3);margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em;}
+.mc-stat .mv{font-size:17px;font-weight:700;color:var(--text);}
+.mc-stat .ms{font-size:11px;color:var(--text4);margin-top:2px;}
+.mc-stat.green .mv{color:var(--ok-text);}.mc-stat.amber .mv{color:var(--amber-text);}.mc-stat.red .mv{color:var(--danger-sub);}
+/* ── Formulas ── */
+.formula-section{margin-bottom:2rem;}
+.formula-section h3{font-size:14px;font-weight:600;color:var(--accent);margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid var(--border);}
+.formula-section p,.formula-section li{font-size:13px;color:var(--text2);line-height:1.7;margin-bottom:6px;}
+.formula-section ul{padding-left:1.25rem;margin-bottom:8px;}
+.formula-block{background:var(--formula-bg);border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin:8px 0;font-family:monospace;font-size:12px;color:var(--text);line-height:1.8;white-space:pre-wrap;}
+.formula-table{width:100%;border-collapse:collapse;margin:8px 0;font-size:12px;}
+.formula-table th{background:var(--formula-th);padding:7px 10px;text-align:left;font-weight:600;color:var(--text2);border:1px solid var(--border);}
+.formula-table td{padding:6px 10px;border:1px solid var(--border);color:var(--text3);vertical-align:top;}
+/* ── Scenario ── */
+.sc-summary-table{width:100%;border-collapse:collapse;font-size:13px;}
+.sc-summary-table th{background:var(--formula-th);padding:7px 10px;text-align:left;font-weight:600;border:1px solid var(--border);color:var(--text2);}
+.sc-summary-table td{padding:7px 10px;border:1px solid var(--border);color:var(--text2);}
+/* ── Modal ── */
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:1000;align-items:center;justify-content:center;padding:1rem;}
+.modal-overlay.open{display:flex;}
+.modal{background:var(--surface);border-radius:14px;padding:1.5rem;width:520px;max-width:100%;box-shadow:0 8px 32px rgba(0,0,0,.3);border:1px solid var(--border);}
+.modal h3{font-size:16px;font-weight:600;margin-bottom:8px;color:var(--text);}
+.modal p{font-size:13px;color:var(--text3);margin-bottom:12px;line-height:1.5;}
+.modal textarea{width:100%;height:140px;border:1px solid var(--border2);border-radius:8px;padding:10px;font-size:12px;font-family:monospace;resize:vertical;outline:none;background:var(--surface2);color:var(--text);}
+.modal textarea:focus{border-color:var(--accent);}
+.modal-actions{display:flex;gap:8px;margin-top:12px;justify-content:flex-end;}
+.modal-err{font-size:12px;color:var(--danger-sub);margin-top:6px;min-height:18px;}
+/* ── Main tabs — scrollable on mobile ── */
+.main-tabs{display:flex;gap:0;border-bottom:2px solid var(--border);margin-bottom:1.25rem;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;}
+.main-tabs::-webkit-scrollbar{display:none;}
+.main-tab{background:none;border:none;border-bottom:3px solid transparent;padding:10px 16px;font-size:13px;font-weight:500;cursor:pointer;color:var(--text3);font-family:inherit;margin-bottom:-2px;transition:color .15s,border-color .15s;outline:none;white-space:nowrap;}
+.main-tab.on{color:var(--accent);border-bottom-color:var(--accent);}
+.main-view{display:none;}.main-view.active{display:block;}
+/* ── Mobile-specific chart heights ── */
+@media(max-width:600px){
+  .page{padding:1rem .75rem 3rem;}
+  h1{font-size:18px;}
+  .toolbar-right .icon-btn .lbl{display:none;}
+  .icon-btn{padding:7px 10px;}
+  canvas{max-height:220px!important;}
+  .tbtn{padding:7px 14px;font-size:12px;}
+  .vtab{padding:5px 10px;font-size:11px;}
+  .main-tab{padding:9px 12px;font-size:12px;}
+}
+</style>
+</head>
+<body>
+<div class="page">
+<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:.25rem;">
+  <div>
+    <h1>Retirement Planner <span id="version-badge" onclick="openChangelog()" style="font-size:12px;font-weight:500;color:var(--accent);background:var(--blue-bg);border:1px solid var(--blue-border);border-radius:20px;padding:2px 10px;cursor:pointer;vertical-align:middle;" title="View changelog">v1.0.0</span></h1>
+    <p class="subtitle">Singapore · SGD · Real (inflation-adjusted) terms · Monthly compounding · CPF interest credited annually</p>
+  </div>
+</div>
+
+<div class="toolbar">
+  <div class="save-indicator"><div class="save-dot" id="save-dot"></div><span id="save-label">Loading…</span></div>
+  <div class="toolbar-right">
+    <button class="dm-btn" id="dm-btn" onclick="toggleDark()" title="Toggle dark mode">🌙</button>
+    <button class="icon-btn" onclick="shareUrl()"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg><span class="lbl">Share</span></button>
+    <button class="icon-btn" onclick="exportData()"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg><span class="lbl">Export</span></button>
+    <button class="icon-btn" onclick="resetAll()" title="Reset all inputs to defaults"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-4.95"/></svg><span class="lbl">Reset</span></button>
+    <button class="icon-btn" onclick="openImport()"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg><span class="lbl">Import</span></button>
+    <button class="icon-btn primary" onclick="exportReport()"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg><span class="lbl">CSV</span></button>
+  </div>
+</div>
+
+<div class="modal-overlay" id="import-modal">
+  <div class="modal"><h3>Import saved data</h3><p>Paste JSON from a previous export. Overwrites current inputs.</p>
+  <textarea id="import-ta" placeholder='{"mode":"single","people":[...],...}'></textarea>
+  <div class="modal-err" id="import-err"></div>
+  <div class="modal-actions"><button class="icon-btn" onclick="closeImport()">Cancel</button><button class="icon-btn primary" onclick="doImport()">Import &amp; apply</button></div></div>
+</div>
+
+<!-- Share modal -->
+<div class="modal-overlay" id="share-modal">
+  <div class="modal">
+    <h3>Share your plan</h3>
+    <p>This URL encodes your entire plan. Anyone with the link can view and edit a copy of your inputs. Your data is never sent to any server — it lives entirely in the URL.</p>
+    <div style="display:flex;gap:8px;margin-bottom:8px;">
+      <input id="share-url-input" type="text" readonly style="flex:1;border:1px solid var(--border2);border-radius:8px;padding:8px 10px;font-size:12px;font-family:monospace;background:var(--surface2);color:var(--text);outline:none;">
+    </div>
+    <div id="share-msg" style="font-size:12px;color:var(--ok-text);min-height:18px;margin-bottom:8px;"></div>
+    <div class="modal-actions">
+      <button class="icon-btn" onclick="closeShare()">Close</button>
+      <button class="icon-btn primary" onclick="copyShareUrl()">Copy link</button>
+    </div>
+  </div>
+</div>
+
+<!-- Changelog modal -->
+<div class="modal-overlay" id="changelog-modal">
+  <div class="modal" style="width:600px;max-height:85vh;display:flex;flex-direction:column;">
+    <h3>Changelog</h3>
+    <div style="overflow-y:auto;flex:1;margin:12px 0;" id="changelog-body"></div>
+    <div class="modal-actions"><button class="icon-btn primary" onclick="closeChangelog()">Close</button></div>
+  </div>
+</div>
+
+<!-- Update notification banner -->
+<div id="update-banner" style="display:none;background:var(--blue-bg);border:1px solid var(--blue-border);border-radius:10px;padding:10px 14px;margin-bottom:1rem;display:none;align-items:center;gap:10px;font-size:13px;color:var(--blue-text);">
+  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+  <span id="update-text"></span>
+  <button class="icon-btn" style="margin-left:auto;padding:4px 10px;" onclick="openChangelog()">What's new</button>
+  <button style="background:none;border:none;cursor:pointer;color:var(--text3);font-size:16px;padding:0 4px;" onclick="document.getElementById('update-banner').style.display='none'">×</button>
+</div>
+
+<div class="main-tabs">
+  <button class="main-tab on" id="mtab-planner" onclick="switchMainTab('planner')">Planner</button>
+  <button class="main-tab" id="mtab-scenario" onclick="switchMainTab('scenario')">Scenario analysis</button>
+  <button class="main-tab" id="mtab-montecarlo" onclick="switchMainTab('montecarlo')">Monte Carlo</button>
+  <button class="main-tab" id="mtab-formulas" onclick="switchMainTab('formulas')">Formulas &amp; methodology</button>
+</div>
+
+<!-- ═══ PLANNER ═══ -->
+<div class="main-view active" id="view-planner">
+  <div class="collapse-section" id="sec-planning">
+    <div class="collapse-header" onclick="toggleSection('sec-planning')"><div class="collapse-arrow"><svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 4l4 4 4-4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></div><span class="collapse-title">Planning for</span></div>
+    <div class="collapse-body">
+      <div class="trow"><button class="tbtn on" id="btn-single" onclick="setMode('single')">Just me</button><button class="tbtn" id="btn-couple" onclick="setMode('couple')">Me &amp; my partner</button></div>
+      <div id="hh-mode-wrap" style="display:none;"><div style="font-size:10px;font-weight:700;color:#999;letter-spacing:.1em;text-transform:uppercase;margin-bottom:8px;">Household finances</div><div class="trow"><button class="tbtn on" id="btn-combined" onclick="setFinMode('combined')">Combined</button><button class="tbtn" id="btn-separate" onclick="setFinMode('separate')">Separate</button></div></div>
+      <div id="ptabs-outer" style="display:none;"><div class="ptabs-wrap"><div class="ptabs"><button class="ptab on" id="ptab-0" onclick="setPerson(0)">You</button><button class="ptab" id="ptab-1" onclick="setPerson(1)">Partner</button></div></div></div>
+    </div>
+  </div>
+
+  <div class="collapse-section" id="sec-profile">
+    <div class="collapse-header" onclick="toggleSection('sec-profile')"><div class="collapse-arrow"><svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 4l4 4 4-4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></div><span class="collapse-title">Profile &amp; income</span></div>
+    <div class="collapse-body"><div id="inputs-wrap"></div></div>
+  </div>
+
+  <div class="collapse-section" id="sec-finances">
+    <div class="collapse-header" onclick="toggleSection('sec-finances')"><div class="collapse-arrow"><svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 4l4 4 4-4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></div><span class="collapse-title">Household finances</span></div>
+    <div class="collapse-body"><div id="hh-wrap"></div></div>
+  </div>
+
+  <div class="collapse-section" id="sec-assumptions">
+    <div class="collapse-header" onclick="toggleSection('sec-assumptions')"><div class="collapse-arrow"><svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 4l4 4 4-4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></div><span class="collapse-title">Projection assumptions</span></div>
+    <div class="collapse-body"><div class="card">
+      <div class="g3" style="margin-bottom:14px;">
+        <div class="sl-wrap"><div class="sl-lbl">Investment return (nominal) <strong id="o-ret">7.0%</strong></div><input type="range" id="sl-ret" min="1" max="15" value="7" step="0.5" oninput="slOut('sl-ret','o-ret');sc()"></div>
+        <div class="sl-wrap"><div class="sl-lbl">Cash / savings return <strong id="o-cash">2.5%</strong></div><input type="range" id="sl-cash" min="0" max="6" value="2.5" step="0.25" oninput="slOut('sl-cash','o-cash');sc()"></div>
+        <div class="sl-wrap"><div class="sl-lbl">Inflation <strong id="o-inf">3.0%</strong></div><input type="range" id="sl-inf" min="0" max="8" value="3" step="0.5" oninput="slOut('sl-inf','o-inf');sc()"></div>
+      </div>
+      <div class="g3" style="margin-bottom:14px;">
+        <div class="sl-wrap"><div class="sl-lbl">Safe withdrawal rate <strong id="o-swr">4.0%</strong></div><input type="range" id="sl-swr" min="2" max="6" value="4" step="0.1" oninput="slOut('sl-swr','o-swr');sc()"></div>
+        <div class="sl-wrap" style="grid-column:span 2;"><div class="sl-lbl">Property appreciation <strong id="o-prop">2.0%</strong></div><input type="range" id="sl-prop" min="0" max="6" value="2" step="0.25" oninput="slOut('sl-prop','o-prop');sc()"></div>
+      </div>
+      <div class="g3">
+        <div class="field"><label>BRS (editable)</label><div class="ig"><span class="pre">S$</span><input type="number" id="g-brs" value="110000" oninput="syncBRS();sc()"></div></div>
+        <div class="field"><label>FRS — 2× BRS (auto)</label><div class="ig disabled"><span class="pre">S$</span><input type="number" id="g-frs" value="220000" disabled></div></div>
+        <div class="field"><label>ERS — 3× BRS (auto)</label><div class="ig disabled"><span class="pre">S$</span><input type="number" id="g-ers" value="330000" disabled></div></div>
+      </div>
+    </div></div>
+  </div>
+
+  <div class="divider"></div>
+
+  <div class="collapse-section" id="sec-fire">
+    <div class="collapse-header" onclick="toggleSection('sec-fire')"><div class="collapse-arrow"><svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 4l4 4 4-4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></div><span class="collapse-title">FIRE status &amp; key metrics</span></div>
+    <div class="collapse-body">
+      <div id="fire-banner" class="fbanner ok"><div class="ft" id="fb-t">—</div><div class="fs" id="fb-s">—</div></div>
+      <div id="person-banners" style="display:none;" class="person-banners"></div>
+      <div class="metrics-grid" id="metrics-grid"></div>
+    </div>
+  </div>
+
+  <div class="collapse-section" id="sec-charts">
+    <div class="collapse-header" onclick="toggleSection('sec-charts')"><div class="collapse-arrow"><svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 4l4 4 4-4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></div><span class="collapse-title">Charts</span></div>
+    <div class="collapse-body">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:1rem;flex-wrap:wrap;">
+        <div class="vtabs" style="margin-bottom:0;">
+          <button class="vtab on" id="vtab-growth" onclick="switchView('growth')">Wealth growth</button>
+          <button class="vtab" id="vtab-drawdown" onclick="switchView('drawdown')">Drawdown</button>
+          <button class="vtab" id="vtab-cpf" onclick="switchView('cpf')">CPF</button>
+        </div>
+        <button class="icon-btn" onclick="switchMainTab('scenario')" style="margin-left:auto;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>Scenario →</button>
+        <button class="icon-btn" onclick="switchMainTab('montecarlo')"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>Monte Carlo →</button>
+      </div>
+      <div id="view-growth"><div style="position:relative;height:300px;"><canvas id="ch-growth"></canvas></div><div class="legend" id="leg-growth"></div></div>
+      <div id="view-drawdown" style="display:none;"><div style="position:relative;height:300px;"><canvas id="ch-drawdown"></canvas></div><div class="legend" id="leg-drawdown"></div></div>
+      <div id="view-cpf" style="display:none;"><div style="position:relative;height:300px;"><canvas id="ch-cpf"></canvas></div><div class="legend" id="leg-cpf"></div></div>
+    </div>
+  </div>
+
+  <div class="collapse-section" id="sec-milestones">
+    <div class="collapse-header" onclick="toggleSection('sec-milestones')"><div class="collapse-arrow"><svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 4l4 4 4-4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></div><span class="collapse-title">Milestones</span></div>
+    <div class="collapse-body"><div class="card" id="ms-card"></div></div>
+  </div>
+
+  <div class="collapse-section" id="sec-table">
+    <div class="collapse-header" onclick="toggleSection('sec-table')"><div class="collapse-arrow"><svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 4l4 4 4-4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></div><span class="collapse-title">Year-by-year projection</span></div>
+    <div class="collapse-body">
+      <div class="tbl-outer"><table><thead><tr id="tbl-head"></tr></thead><tbody id="tbl-body"></tbody></table></div>
+      <p class="tbl-note">★ = retirement year. End-of-year balances. Monthly compounding. CPF interest accrues monthly, credits annually on Dec 31. Net Income (pre-ret) = take-home after employee CPF. Net Income (post-ret) = CPF LIFE + other income. Cash drawn first in retirement; investable topped up when cash &lt; 3 months expenses. AW CPF included in contributions.</p>
+    </div>
+  </div>
+
+  <p class="foot-note">CPF 2026: OW ceiling S$8,000/mo · AW ceiling = S$102,000 − actual OW subject to CPF · Age-banded OA/SA/MA allocation · Tiered interest accrues monthly, credits Dec 31 · SA closes at 55 · RA earns 4% credited annually · CPF LIFE locked at 65 · All projections are estimates — not financial advice.</p>
+</div>
+
+<!-- ═══ SCENARIO ═══ -->
+<div class="main-view" id="view-scenario">
+  <div class="card"><p class="card-hd">Scenario analysis — drawdown comparison</p>
+    <p style="font-size:13px;color:#666;margin-bottom:14px;line-height:1.5;">Adjust fields to create a scenario. Both lines start at the earlier retirement age. Dashed = scenario, solid = base.</p>
+    <div class="g3" style="margin-bottom:10px;">
+      <div class="field"><label>You — retirement age</label><div class="ig"><input type="number" id="sc-retAge0" value="60" min="30" max="80" oninput="renderScenario()"></div></div>
+      <div class="field" id="sc-partner-field" style="display:none;"><label>Partner — retirement age</label><div class="ig"><input type="number" id="sc-retAge1" value="58" min="30" max="80" oninput="renderScenario()"></div></div>
+      <div class="field"><label>Retirement expenses / yr</label><div class="ig"><span class="pre">S$</span><input type="number" id="sc-retExp" value="45000" oninput="renderScenario()"></div></div>
+    </div>
+    <div class="g3">
+      <div class="field"><label>Investment return %</label><div class="ig"><span class="pre">%</span><input type="number" id="sc-ret" value="7" step="0.5" min="0" max="20" oninput="renderScenario()"></div></div>
+      <div class="field"><label>Inflation %</label><div class="ig"><span class="pre">%</span><input type="number" id="sc-inf" value="3" step="0.5" min="0" max="10" oninput="renderScenario()"></div></div>
+      <div class="field" style="align-self:end;"><button class="icon-btn primary" style="width:100%;justify-content:center;" onclick="resetScenario()">Reset to base</button></div>
+    </div>
+  </div>
+  <div class="card"><div style="position:relative;height:340px;"><canvas id="ch-scenario"></canvas></div><div class="legend" id="leg-scenario"></div></div>
+  <div class="card"><table class="sc-summary-table" id="sc-summary-table"></table></div>
+</div>
+
+<!-- ═══ MONTE CARLO ═══ -->
+<div class="main-view" id="view-montecarlo">
+  <div class="card"><p class="card-hd">Monte Carlo — sequence of returns risk</p>
+    <p style="font-size:13px;color:#666;margin-bottom:14px;line-height:1.5;">Simulates <span id="mc-n-label">500</span> random return paths using log-normal distribution. Shows the range of possible portfolio outcomes from retirement. The base deterministic projection is the grey dashed line.</p>
+    <div class="g3" style="margin-bottom:12px;">
+      <div class="sl-wrap"><div class="sl-lbl">Annual volatility (σ) <strong id="mc-vol-out">12%</strong></div><input type="range" id="mc-vol" min="5" max="30" value="12" step="1" oninput="document.getElementById('mc-vol-out').textContent=this.value+'%'"></div>
+      <div class="field"><label>Simulations</label>
+        <div class="ig"><select id="mc-n" onchange="document.getElementById('mc-n-label').textContent=this.value"><option value="200">200 (fast)</option><option value="500" selected>500 (default)</option><option value="1000">1000 (precise)</option></select></div>
+      </div>
+      <div class="field" style="align-self:end;"><button class="icon-btn primary" style="width:100%;justify-content:center;" onclick="runMonteCarlo()"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polygon points="5 3 19 12 5 21 5 3"/></svg>Run simulation</button></div>
+    </div>
+  </div>
+  <div class="mc-stats" id="mc-stats"><div class="mc-stat" style="grid-column:span 4;color:#aaa;font-size:13px;text-align:center;padding:2rem;">Click "Run simulation" to generate Monte Carlo analysis.</div></div>
+  <div class="card"><div style="position:relative;height:360px;"><canvas id="ch-mc"></canvas></div><div class="legend" id="leg-mc"></div></div>
+  <p class="tbl-note" style="margin-top:8px;">Each path uses log-normal monthly returns: μ = ln(1+real_annual_return)/12, σ = annual_vol/√12. Same cash buffer drawdown strategy as base model. Shaded bands show p10–p90 (outer) and p25–p75 (inner) ranges.</p>
+</div>
+
+<!-- ═══ FORMULAS ═══ -->
+<div class="main-view" id="view-formulas">
+<div class="formula-section"><h3>1. Real return rates</h3>
+<p>All projections run in <strong>real (inflation-adjusted) terms</strong> using the Fisher equation. Nominal rates are converted to real monthly equivalents.</p>
+<div class="formula-block">Real monthly return = (1 + nominal_rate)^(1/12) / (1 + inflation)^(1/12) − 1
+
+Applied to:
+  Investable assets  → investment return slider
+  Cash &amp; emergency  → cash/savings return slider
+  Property           → property appreciation slider
+  Income growth      → (1 + growth%)^(1/12) − 1 per month</div>
+</div>
+
+<div class="formula-section"><h3>2. FIRE number</h3>
+<p>Based on the <strong>4% rule</strong>. The FIRE Number is the portfolio size from which you can withdraw your annual retirement expenses indefinitely at the chosen safe withdrawal rate.</p>
+<div class="formula-block">FIRE Number = Annual retirement expenses ÷ Safe withdrawal rate
+
+Example (defaults):  S$45,000 ÷ 0.04 = S$1,125,000</div>
+</div>
+
+<div class="formula-section"><h3>3. FIRE age — monthly precision via interpolation</h3>
+<p>FIRE age is detected on the <strong>combined</strong> liquid net worth vs the <strong>combined</strong> FIRE Number. The annual projection rows are scanned to find the first year where combined LNW ≥ combined FIRE Number, then linear interpolation within that year gives sub-year (monthly) precision. Per-person tracking is not used — this prevents incorrect results in couple mode where each person's individual FIRE number is only half the household target.</p>
+<div class="formula-block">For each annual row j (scanning combined LNW = r0.lnw + r1.lnw):
+  if combined_LNW[j] >= combined_FIRE_Number:
+    prevLNW = combined_LNW[j-1]  (or starting LNW if j=0)
+    frac     = (FIRE_Number − prevLNW) / (combined_LNW[j] − prevLNW)
+    frac     = clamp(frac, 0, 1)
+    fireAge  = age_at_year_start + frac × (months_in_year / 12)
+    break
+
+Years to FIRE = fireAge − current_decimal_age   (shown as X years Y months)
+Current decimal age includes month and day of year for full precision.</div>
+</div>
+
+<div class="formula-section"><h3>4. Key metrics</h3>
+<div class="formula-block">FIRE Number          = retirement_expenses ÷ SWR
+Years to FIRE        = fireAgeExact − today_age  (monthly precision)
+Portfolio at Ret.    = combined LNW at target retirement age
+Monthly Withdrawal   = FIRE_Number × SWR ÷ 12
+                     = retirement_expenses ÷ 12  (gross portfolio draw)
+CPF LIFE /mo         = RA_balance_at_65 × 0.68%  (to 1 decimal place)</div>
+</div>
+
+<div class="formula-section"><h3>5. Savings (pre-retirement)</h3>
+<p>Net take-home deducts <strong>employee CPF</strong> on both ordinary wages (OW) and additional wages (AW), subject to their respective ceilings.</p>
+<div class="formula-block">OW ceiling / yr      = min(gross_monthly_income × 12, S$96,000)
+AW ceiling / yr      = max(0, S$102,000 − OW_subject_to_CPF)
+AW CPF-liable        = min(additional_wages, AW_ceiling)
+Total CPF-liable     = OW_ceiling + AW_CPF_liable
+
+Employee CPF / yr    = Total_CPF_liable × employee_rate (age-banded)
+Net take-home / mo   = (gross_income − employee_CPF) ÷ 12
+Monthly savings      = net_take_home_monthly − expenses_monthly</div>
+</div>
+
+<div class="formula-section"><h3>6. Portfolio growth — monthly compounding</h3>
+<div class="formula-block">Each month (pre-retirement):
+  Invest(m+1) = Invest(m) × (1 + mRet) + monthly_savings
+  Cash(m+1)   = Cash(m)   × (1 + mCash)
+  Income(m+1) = Income(m) × (1 + mIncGrowth)
+
+Savings are added monthly so they start compounding immediately.</div>
+</div>
+
+<div class="formula-section"><h3>7. CPF contributions — OW and AW</h3>
+<p>Uses 2026 MOM age-banded rates. OW ceiling = S$8,000/month. AW ceiling = S$102,000 − actual OW subject to CPF. <strong>Post-55: SA account is closed.</strong> The SA allocation portion of contributions routes to RA instead.</p>
+<table class="formula-table">
+<thead><tr><th>Age</th><th>Employee</th><th>Employer</th><th>Total</th><th>→ OA</th><th>→ SA / RA*</th><th>→ MA</th></tr></thead>
+<tbody>
+<tr><td>≤35</td><td>20%</td><td>17%</td><td>37%</td><td>23%</td><td>6%</td><td>8%</td></tr>
+<tr><td>36–45</td><td>20%</td><td>17%</td><td>37%</td><td>21%</td><td>7%</td><td>9%</td></tr>
+<tr><td>46–50</td><td>20%</td><td>17%</td><td>37%</td><td>19%</td><td>8%</td><td>10%</td></tr>
+<tr><td>51–55</td><td>20%</td><td>17%</td><td>37%</td><td>15%</td><td>11.5%</td><td>10.5%</td></tr>
+<tr><td>56–60</td><td>15%</td><td>13%</td><td>28%</td><td>12%</td><td>3.5% → RA</td><td>12.5%</td></tr>
+<tr><td>61–65</td><td>9.5%</td><td>9%</td><td>18.5%</td><td>3.5%</td><td>2.5% → RA</td><td>12.5%</td></tr>
+<tr><td>&gt;65</td><td>7%</td><td>7.5%</td><td>14.5%</td><td>1%</td><td>1% → RA</td><td>12.5%</td></tr>
+</tbody></table>
+<p>* Post-55, the SA allocation routes to RA instead since SA account is closed.</p>
+</div>
+
+<div class="formula-section"><h3>8. CPF interest — accrual vs crediting</h3>
+<p>The CPF Board accrues interest monthly on the lowest balance, but <strong>credits and compounds it only on 31 December</strong>. The planner correctly models this: interest is accumulated monthly into a running total and added to the balance only at year-end.</p>
+<div class="formula-block">Each month (accrual only — not added to balance):
+  oaAccum += OA × (2.5%/12) + min(OA, oaBonus) × (1%/12)
+  saAccum += SA × (4.0%/12) + min(SA, saBonus) × (1%/12)
+  maAccum += MA × (4.0%/12) + min(MA, maBonus) × (1%/12)
+  raAccum += RA × (4.0%/12)
+
+  Where bonus tiers: first S$20k OA gets +1%, next S$40k SA/MA gets +1%
+
+31 December only (credit all accrued interest):
+  OA += oaAccum;  SA += saAccum;  MA += maAccum;  RA += raAccum
+  reset all accumulators to 0
+
+SA = 0 after age 55 (account closes). OA residual and MA continue accruing.</div>
+</div>
+
+<div class="formula-section"><h3>9. CPF at age 55 — Retirement Account</h3>
+<div class="formula-block">SA → RA:    saToRA = min(SA, retirement_sum_target)
+OA → RA:    oaToRA = min(OA, target − saToRA)
+RA balance  = saToRA + oaToRA
+SA closes   → excess SA (above saToRA) moves to OA
+OA after    = (OA − oaToRA) + excessSA
+Excess OA withdrawn → added to investable portfolio
+SA = 0 permanently after 55
+
+Post-55 accounts: OA (residual), MA, RA</div>
+</div>
+
+<div class="formula-section"><h3>10. CPF LIFE payout</h3>
+<div class="formula-block">CPF LIFE annual payout = RA_balance_at_65 × 0.68% × 12
+
+Payout is locked at age 65 — does not change in subsequent years.
+0.68%/month approximates CPF's published FRS payout schedule.</div>
+</div>
+
+<div class="formula-section"><h3>11. Retirement drawdown — cash buffer strategy</h3>
+<div class="formula-block">Each month in retirement:
+  net_withdrawal = max(0, monthly_expenses − CPF_LIFE_monthly)
+
+  Step 1 — Draw from cash:
+    cash_draw = min(net_withdrawal, cash)
+    cash      = cash × (1 + mCash) − cash_draw
+    remainder = net_withdrawal − cash_draw
+
+  Step 2 — Top up cash from investable if cash &lt; 3 months expenses:
+    top_up = min(12_months_expenses − cash, investable)
+    cash  += top_up;  invest −= top_up
+
+  Step 3 — Draw remainder from investable if cash exhausted:
+    invest = max(0, invest × (1 + mRet) − remainder)</div>
+</div>
+
+<div class="formula-section"><h3>12. Mortgage amortisation</h3>
+<div class="formula-block">Monthly payment = P × r(1+r)^n / ((1+r)^n − 1)
+  P = outstanding balance, r = annual_rate/12, n = tenure_months
+
+Each month:
+  interest   = balance × r
+  principal  = monthly_payment − interest
+  balance   −= principal</div>
+</div>
+
+<div class="formula-section"><h3>13. First-year pro-ration</h3>
+<div class="formula-block">months_remaining = 12 − current_month + 1
+First row covers only those months (e.g. April → 9 months).
+All subsequent rows cover full 12-month cycles.
+First row end-of-year LNW reflects pro-rated savings, not a full year.</div>
+</div>
+
+<div class="formula-section"><h3>14. LeanFIRE &amp; CoastFIRE</h3>
+<div class="formula-block">LeanFIRE Number = LeanFIRE_expenses ÷ SWR
+CoastFIRE       = FIRE_Number ÷ (1 + real_annual_return)^years_to_retirement</div>
+</div>
+
+<div class="formula-section"><h3>15. Monte Carlo — sequence of returns</h3>
+<p>Each simulation path draws monthly returns from a log-normal distribution. A <strong>drift correction (σ²/2)</strong> is applied so the median simulated path matches the deterministic base projection — without this correction, log-normal simulations are optimistically biased at high volatility.</p>
+<div class="formula-block">Monthly return ~ LogNormal(μ, σ_monthly)
+  σ_monthly = annual_volatility / √12
+  μ          = ln(1 + real_annual_return) / 12 − σ_monthly² / 2
+               ↑ drift-adjusted so E[portfolio] matches deterministic base
+
+N paths (200 / 500 / 1000). At each age, paths sorted to extract:
+  p10, p25, p50 (median), p75, p90
+
+Survival probability = paths where portfolio &gt; 0 at life expectancy ÷ N</div>
+</div>
+</div><!-- end formulas -->
+
+</div><!-- end page -->
+<script>
+/* ══ STATE ══ */
+let mode='single',finMode='combined',activePerson=0;
+const charts={};const SK='sg_ret_v4';
+const mkP=(n)=>({label:n===0?'You':'Partner',age:32,retAge:60,lifeExp:85,income:80000,additionalWages:0,incomeGrowth:3,otherIncome:0,cpfOA:0,cpfSA:0,cpfMA:0,cpfType:'employed',cpfSum:'FRS'});
+const shared={investable:80000,cash:10000,propValue:0,propLoan:0,propRate:3.5,propTenure:25,expenses:50000,retExpenses:45000,leanExpenses:30000};
+const sep=[{investable:80000,cash:10000,propValue:0,propLoan:0,propRate:3.5,propTenure:25,expenses:50000,retExpenses:45000,leanExpenses:30000},{investable:40000,cash:5000,propValue:0,propLoan:0,propRate:3.5,propTenure:25,expenses:30000,retExpenses:25000,leanExpenses:20000}];
+const people=[mkP(0),mkP(1)];
+const A={ret:7,cash:2.5,inf:3,swr:4,prop:2,brs:110000};
+const secState={};
+let lastRes=null;
+
+/* ══ MAIN TABS ══ */
+function switchMainTab(t){
+  ['planner','scenario','montecarlo','formulas'].forEach(x=>{
+    document.getElementById('view-'+x).classList.toggle('active',x===t);
+    document.getElementById('mtab-'+x).classList.toggle('on',x===t);
+  });
+  if(t==='scenario'){syncScenarioDefaults();renderScenario();}
+}
+function syncScenarioDefaults(){
+  document.getElementById('sc-retAge0').value=people[0].retAge;
+  document.getElementById('sc-retAge1').value=people[1].retAge;
+  const cr=lastRes&&lastRes._combined;
+  const tRE=cr?cr.fin.retExpenses:(lastRes?lastRes.reduce((s,r)=>s+(r.fin?.retExpenses||0),0):45000);
+  document.getElementById('sc-retExp').value=Math.round(tRE);
+  document.getElementById('sc-ret').value=A.ret;
+  document.getElementById('sc-inf').value=A.inf;
+  document.getElementById('sc-partner-field').style.display=mode==='couple'?'block':'none';
+}
+
+/* ══ COLLAPSE ══ */
+function toggleSection(id){const el=document.getElementById(id);const c=!el.classList.contains('closed');el.classList.toggle('closed',c);secState[id]=c?'closed':'open';try{localStorage.setItem(SK+'_sec',JSON.stringify(secState));}catch(e){}}
+function restoreSections(){try{const s=JSON.parse(localStorage.getItem(SK+'_sec')||'{}');Object.entries(s).forEach(([id,st])=>{secState[id]=st;const el=document.getElementById(id);if(el&&st==='closed')el.classList.add('closed');});}catch(e){}}
+
+/* ══ SAVE / LOAD ══ */
+let saveTimer=null;
+function markUnsaved(){const d=document.getElementById('save-dot'),l=document.getElementById('save-label');if(d)d.classList.remove('saved');if(l)l.textContent='Unsaved…';}
+function markSaved(){const d=document.getElementById('save-dot'),l=document.getElementById('save-label');if(d)d.classList.add('saved');if(l)l.textContent='Saved '+new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});}
+function snapshot(){return{mode,finMode,people:people.map(p=>({...p})),shared:{...shared},sep:sep.map(s=>({...s})),A:{...A}};}
+function sc(){
+  markUnsaved();
+  clearTimeout(saveTimer);
+  saveTimer=setTimeout(()=>{
+    const snap=snapshot();
+    try{localStorage.setItem(SK,JSON.stringify(snap));markSaved();}catch(e){}
+    pushStateToUrl(snap);
+  },600);
+  compute();
+}
+function loadState(){try{const raw=localStorage.getItem(SK);if(!raw){markSaved();return;}const d=JSON.parse(raw);mode=d.mode||'single';finMode=d.finMode||'combined';if(d.people)d.people.forEach((p,i)=>{if(people[i])Object.assign(people[i],p);});if(d.shared)Object.assign(shared,d.shared);if(d.sep)d.sep.forEach((s,i)=>{if(sep[i])Object.assign(sep[i],s);});if(d.A)Object.assign(A,d.A);markSaved();}catch(e){markSaved();}}
+
+/* ══ EXPORT / IMPORT ══ */
+function exportData(){const b=new Blob([JSON.stringify(snapshot(),null,2)],{type:'application/json'});const u=URL.createObjectURL(b),a=document.createElement('a');a.href=u;a.download='retirement-planner-data.json';a.click();URL.revokeObjectURL(u);}
+function openImport(){document.getElementById('import-modal').classList.add('open');document.getElementById('import-ta').value='';document.getElementById('import-err').textContent='';}
+function closeImport(){document.getElementById('import-modal').classList.remove('open');}
+function doImport(){const errEl=document.getElementById('import-err');try{const d=JSON.parse(document.getElementById('import-ta').value.trim());if(!d.people||!d.shared)throw new Error('Invalid format.');mode=d.mode||'single';finMode=d.finMode||'combined';d.people.forEach((p,i)=>{if(people[i])Object.assign(people[i],p);});Object.assign(shared,d.shared);if(d.sep)d.sep.forEach((s,i)=>{if(sep[i])Object.assign(sep[i],s);});if(d.A)Object.assign(A,d.A);closeImport();applySliders();setMode(mode);try{localStorage.setItem(SK,JSON.stringify(snapshot()));markSaved();}catch(e){}}catch(e){errEl.textContent='Error: '+e.message;}}
+function exportReport(){
+  if(!lastRes)return;
+  const cr=lastRes._combined;
+  const ic=mode==='couple';
+  const hdr=['Year','Age (You)',ic?'Age (Partner)':null,'Net Income','Expenses','Savings','Withdrawal','Portfolio Return','Liquid Net Worth','CPF Income','CPF Total','Total NW excl Property','Property Value','Property Mortgage','Total Net Worth'].filter(Boolean);
+  const lines=[hdr.join(',')];
+  if(cr){
+    cr.rows.forEach(r=>{lines.push([r.year,r.age,r.age1,Math.round(r.netIncome),Math.round(r.expenses),Math.round(r.savings),Math.round(r.withdrawal),Math.round(r.portReturn),Math.round(r.lnw),Math.round(r.cpfIncome),Math.round(r.cpfTotal),Math.round(r.totalNWexP),Math.round(r.propVal),Math.round(r.propLoan),Math.round(r.totalNW)].join(','));});
+  } else {
+    const r0=lastRes[0],r1=lastRes[1];
+    for(let j=0;j<r0.rows.length;j++){const a=r0.rows[j],b=r1?r1.rows[j]:null;lines.push([a.year,a.age,b?b.age:null,Math.round(a.netIncome+(b?b.netIncome:0)),Math.round(a.expenses+(b?b.expenses:0)),Math.round(a.savings+(b?b.savings:0)),Math.round(a.withdrawal+(b?b.withdrawal:0)),Math.round(a.portReturn+(b?b.portReturn:0)),Math.round(a.lnw+(b?b.lnw:0)),Math.round(a.cpfIncome+(b?b.cpfIncome:0)),Math.round(a.cpfTotal+(b?b.cpfTotal:0)),Math.round(a.totalNWexP+(b?b.totalNWexP:0)),Math.round(a.propVal+(b?b.propVal:0)),Math.round(a.propLoan+(b?b.propLoan:0)),Math.round(a.totalNW+(b?b.totalNW:0))].filter((_,i)=>i<hdr.length).join(','));}
+  }
+  const bl=new Blob([lines.join('\n')],{type:'text/csv'});const u=URL.createObjectURL(bl),a=document.createElement('a');a.href=u;a.download='retirement-projection.csv';a.click();URL.revokeObjectURL(u);
+}
+
+/* ══ HELPERS ══ */
+function gv(id){const e=document.getElementById(id);return e?parseFloat(e.value)||0:0;}
+function fmt(n,dp=0){const s=Math.abs(n),p=n<0?'-S$':'S$';if(s>=1e6)return p+(s/1e6).toFixed(2)+'M';if(s>=1e3)return p+(s/1e3).toFixed(dp>0?1:0)+'K';return p+n.toFixed(dp);}
+function fmtF(n){if(!n&&n!==0)return'—';const s=Math.abs(n),p=n<0?'-S$':'S$';return p+Math.round(s).toLocaleString();}
+function fmtT(n){if(n==null)return'<span class="c-dim">—</span>';const s=Math.abs(n),str='S$'+Math.round(s).toLocaleString();return n<0?`<span class="c-neg">-${str}</span>`:str;}
+function fmtAM(d){const yr=Math.floor(d),mo=Math.round((d-yr)*12);if(mo===0)return`${yr}`;if(mo===12)return`${yr+1}`;return`${yr}y ${mo}m`;}
+function fmtPct(n){return(n>=0?'':'-')+Math.abs(n).toFixed(1)+'%';}
+function slOut(sid,oid){document.getElementById(oid).textContent=parseFloat(document.getElementById(sid).value).toFixed(1)+'%';A[sid.replace('sl-','')]=parseFloat(document.getElementById(sid).value);}
+function syncBRS(){A.brs=gv('g-brs');document.getElementById('g-frs').value=Math.round(A.brs*2);document.getElementById('g-ers').value=Math.round(A.brs*3);}
+function applySliders(){const m={ret:'sl-ret',cash:'sl-cash',inf:'sl-inf',swr:'sl-swr',prop:'sl-prop'};Object.entries(m).forEach(([k,sid])=>{const el=document.getElementById(sid);if(el)el.value=A[k];const oel=document.getElementById('o-'+k);if(oel)oel.textContent=parseFloat(A[k]).toFixed(1)+'%';});const b=document.getElementById('g-brs');if(b){b.value=A.brs;syncBRS();}}
+function setActive(id,on){const e=document.getElementById(id);if(!e)return;if(on)e.classList.add('on');else e.classList.remove('on');}
+function mkIG(id,pre,val,dis,cb){const d=dis?' disabled':'',cls=dis?' disabled':'',ev=dis?'':` oninput="${cb}"`;return`<div class="ig${cls}"><span class="pre">${pre}</span><input type="number" id="${id}" value="${val}"${d}${ev}></div>`;}
+function mkSel(id,val,dis,cb,opts){const d=dis?' disabled':'',cls=dis?' disabled':'',ev=dis?'':` onchange="${cb}"`;const os=opts.map(o=>`<option value="${o.v}"${val===o.v?' selected':''}>${o.l}</option>`).join('');return`<div class="ig${cls}"><select id="${id}"${d}${ev}>${os}</select></div>`;}
+function calcMonthlyPayment(p,r,t){if(!p||!r||!t)return 0;const mr=r/100/12,n=t*12;return mr===0?p/n:p*(mr*Math.pow(1+mr,n))/(Math.pow(1+mr,n)-1);}
+function updateMortgagePayment(src){const el=document.getElementById('fin-propPayment');if(el)el.value=Math.round(calcMonthlyPayment(src.propLoan,src.propRate,src.propTenure));}
+
+/* ══ BUILD INPUTS ══ */
+function buildPersonInputs(){
+  const w=document.getElementById('inputs-wrap');w.innerHTML='';
+  const idxs=mode==='couple'?[activePerson]:[0];
+  idxs.forEach(i=>{const p=people[i],pfx=mode==='couple'?p.label+' — ':'';
+    w.innerHTML+=`<div class="card"><p class="card-hd">${pfx}Profile &amp; income</p>
+      <div class="g3" style="margin-bottom:10px;">
+        <div class="field"><label>Current age</label><div class="ig"><input type="number" id="p${i}-age" value="${p.age}" min="18" max="79" oninput="syncP(${i})"></div></div>
+        <div class="field"><label>Target retirement age</label><div class="ig"><input type="number" id="p${i}-retAge" value="${p.retAge}" min="30" max="80" oninput="syncP(${i})"></div></div>
+        <div class="field"><label>Life expectancy</label><div class="ig"><input type="number" id="p${i}-lifeExp" value="${p.lifeExp}" min="60" max="100" oninput="syncP(${i})"></div></div>
+      </div>
+      <div class="g3" style="margin-bottom:10px;">
+        <div class="field"><label>Annual income (gross OW)</label>${mkIG('p'+i+'-income','S$',p.income,false,'syncP('+i+')')}</div>
+        <div class="field"><label>Additional wages / bonuses (AW)</label>${mkIG('p'+i+'-aw','S$',p.additionalWages||0,false,'syncP('+i+')')}</div>
+        <div class="field"><label>Annual income growth</label>${mkIG('p'+i+'-incGrowth','%',p.incomeGrowth,false,'syncP('+i+')')}</div>
+      </div>
+      <div class="g2">
+        <div class="field"><label>Other retirement income / yr</label>${mkIG('p'+i+'-otherIncome','S$',p.otherIncome||0,false,'syncP('+i+')')}</div>
+      </div>
+    </div>
+    <div class="card"><p class="card-hd">${pfx}CPF</p>
+      <div class="g3" style="margin-bottom:10px;">
+        <div class="field"><label>OA balance</label>${mkIG('p'+i+'-cpfOA','S$',p.cpfOA,false,'syncP('+i+')')}</div>
+        <div class="field"><label>SA balance</label>${mkIG('p'+i+'-cpfSA','S$',p.cpfSA,false,'syncP('+i+')')}</div>
+        <div class="field"><label>MA balance</label>${mkIG('p'+i+'-cpfMA','S$',p.cpfMA,false,'syncP('+i+')')}</div>
+      </div>
+      <div class="g2">
+        <div class="field"><label>Employment type</label>${mkSel('p'+i+'-cpfType',p.cpfType,false,'syncP('+i+')',[{v:'employed',l:'Employed (EE + ER)'},{v:'self',l:'Self-employed (voluntary)'}])}</div>
+        <div class="field"><label>Retirement sum target</label>${mkSel('p'+i+'-cpfSum',p.cpfSum,false,'syncP('+i+')',[{v:'BRS',l:'BRS — Basic'},{v:'FRS',l:'FRS — Full (recommended)'},{v:'ERS',l:'ERS — Enhanced'}])}</div>
+      </div>
+      <p class="cpf-note">SA closes at 55. Excess SA → OA, excess OA → investable portfolio. CPF LIFE payout locked from RA at 65. AW CPF: ceiling = S$102,000 − OW subject to CPF.</p>
+    </div>`;
+  });
+}
+
+function buildHH(){
+  const w=document.getElementById('hh-wrap');w.innerHTML='';
+  const isComb=mode==='single'||finMode==='combined';
+  const src=isComb?shared:sep[activePerson];
+  const lbl=(!isComb&&mode==='couple')?people[activePerson].label+' — ':'';
+  const cb=isComb?'syncShared()':`syncSep(${activePerson})`;
+  w.innerHTML=`
+  <div class="card"><p class="card-hd">${lbl}Liquid net worth</p>
+    <div class="g2"><div class="field"><label>Investable assets (stocks, ETFs, unit trusts)</label>${mkIG('fin-invest','S$',src.investable,false,cb)}</div><div class="field"><label>Cash &amp; emergency fund</label>${mkIG('fin-cash','S$',src.cash,false,cb)}</div></div>
+    <p class="cpf-note">Investable → investment return. Cash → cash/savings return. In retirement, cash drawn first; investable topped up when cash &lt; 3 months expenses.</p>
+  </div>
+  <div class="card"><p class="card-hd">${lbl}Property</p>
+    <div class="sub-hd">Valuation</div>
+    <div class="g2" style="margin-bottom:0;"><div class="field"><label>Property value</label>${mkIG('fin-propVal','S$',src.propValue,false,cb)}</div><div class="field"><label>Outstanding loan balance</label>${mkIG('fin-propLoan','S$',src.propLoan,false,cb)}</div></div>
+    <div class="sub-hd">Mortgage details</div>
+    <div class="g3"><div class="field"><label>Annual interest rate</label>${mkIG('fin-propRate','%',src.propRate,false,cb)}</div><div class="field"><label>Remaining tenure (years)</label>${mkIG('fin-propTenure','yrs',src.propTenure,false,cb)}</div><div class="field"><label>Monthly payment (auto)</label><div class="ig disabled"><span class="pre">S$</span><input type="number" id="fin-propPayment" value="0" disabled></div></div></div>
+    <p class="cpf-note">Property excluded from FIRE Number. Amortised on actual schedule.</p>
+  </div>
+  <div class="card"><p class="card-hd">${lbl}Expenses</p>
+    <div class="g3"><div class="field"><label>Annual expenses (current)</label>${mkIG('fin-exp','S$',src.expenses,false,cb)}</div><div class="field"><label>Annual expenses in retirement</label>${mkIG('fin-retExp','S$',src.retExpenses,false,cb)}</div><div class="field"><label>LeanFIRE annual expenses</label>${mkIG('fin-leanExp','S$',src.leanExpenses,false,cb)}</div></div>
+  </div>`;
+  updateMortgagePayment(src);
+}
+
+/* ══ SYNC ══ */
+function syncP(i){const p=people[i];['age','retAge','lifeExp','income','cpfOA','cpfSA','cpfMA','otherIncome'].forEach(k=>{const e=document.getElementById('p'+i+'-'+k);if(e)p[k]=parseFloat(e.value)||0;});const aw=document.getElementById('p'+i+'-aw');if(aw)p.additionalWages=parseFloat(aw.value)||0;const ig=document.getElementById('p'+i+'-incGrowth');if(ig)p.incomeGrowth=parseFloat(ig.value)||0;['cpfType','cpfSum'].forEach(k=>{const e=document.getElementById('p'+i+'-'+k);if(e)p[k]=e.value;});sc();}
+function syncShared(){shared.investable=gv('fin-invest');shared.cash=gv('fin-cash');shared.propValue=gv('fin-propVal');shared.propLoan=gv('fin-propLoan');shared.propRate=gv('fin-propRate');shared.propTenure=gv('fin-propTenure');shared.expenses=gv('fin-exp');shared.retExpenses=gv('fin-retExp');shared.leanExpenses=gv('fin-leanExp');updateMortgagePayment(shared);sc();}
+function syncSep(i){sep[i].investable=gv('fin-invest');sep[i].cash=gv('fin-cash');sep[i].propValue=gv('fin-propVal');sep[i].propLoan=gv('fin-propLoan');sep[i].propRate=gv('fin-propRate');sep[i].propTenure=gv('fin-propTenure');sep[i].expenses=gv('fin-exp');sep[i].retExpenses=gv('fin-retExp');sep[i].leanExpenses=gv('fin-leanExp');updateMortgagePayment(sep[i]);sc();}
+
+/* ══ MODE SETTERS ══ */
+function setMode(m){mode=m;setActive('btn-single',m==='single');setActive('btn-couple',m==='couple');document.getElementById('hh-mode-wrap').style.display=m==='couple'?'block':'none';document.getElementById('ptabs-outer').style.display=m==='couple'?'block':'none';activePerson=0;setActive('ptab-0',true);setActive('ptab-1',false);buildPersonInputs();buildHH();sc();}
+function setFinMode(fm){finMode=fm;setActive('btn-combined',fm==='combined');setActive('btn-separate',fm==='separate');buildHH();sc();}
+function setPerson(i){activePerson=i;setActive('ptab-0',i===0);setActive('ptab-1',i===1);buildPersonInputs();if(finMode==='separate')buildHH();sc();}
+
+/* ══ CPF HELPERS ══ */
+function cpfRates(age,type){if(type==='self')return{ee:0,er:0};if(age<=55)return{ee:.20,er:.17};if(age<=60)return{ee:.15,er:.13};if(age<=65)return{ee:.095,er:.09};return{ee:.07,er:.075};}
+function cpfAlloc(age,type){
+  if(type==='self')return{oa:0,sa:0,ma:0,ra:0};
+  let oaR,saR,maR,raR=0;
+  if(age<=35)     {oaR=23;saR=6;  maR=8;}
+  else if(age<=45){oaR=21;saR=7;  maR=9;}
+  else if(age<=50){oaR=19;saR=8;  maR=10;}
+  else if(age<=55){oaR=15;saR=11.5;maR=10.5;}
+  else if(age<=60){oaR=12;saR=3.5;maR=12.5;}
+  else if(age<=65){oaR=3.5;saR=2.5;maR=12.5;}
+  else            {oaR=1; saR=1;  maR=12.5;}
+  if(age>55){raR=saR;saR=0;} // SA closed post-55: SA portion routes to RA
+  const sum=oaR+saR+maR+raR;
+  return{oa:oaR/sum,sa:saR/sum,ma:maR/sum,ra:raR/sum};
+}
+
+/* FIX: CPF interest accrues monthly, credits annually */
+function cpfMonthlyAccrual(oa,sa,ma){
+  const ob=Math.min(oa,20000),r1=Math.max(0,60000-ob),sb=Math.min(sa,r1),r2=Math.max(0,r1-sb),mb=Math.min(ma,r2);
+  return{aOA:oa*(0.025/12)+ob*(0.01/12),aSA:sa*(0.04/12)+sb*(0.01/12),aMA:ma*(0.04/12)+mb*(0.01/12)};
+}
+function estLife(ra){return Math.max(0,ra*.0068*12);}
+function getFin(i){if(mode==='single')return{...shared};if(finMode==='combined')return{investable:shared.investable/2,cash:shared.cash/2,propValue:shared.propValue/2,propLoan:shared.propLoan/2,propRate:shared.propRate,propTenure:shared.propTenure,expenses:shared.expenses/2,retExpenses:shared.retExpenses/2,leanExpenses:shared.leanExpenses/2};return{...sep[i]};}
+
+/* FIX: AW CPF ceiling calculation */
+function calcCpfLiable(annualOW,additionalWages,age,type){
+  const owCapped=Math.min(annualOW,96000);
+  const awCeiling=Math.max(0,102000-owCapped);
+  const awCapped=Math.min(additionalWages||0,awCeiling);
+  return{owCapped,awCapped,total:owCapped+awCapped};}
+
+/* ══ PROJECTION (per person) ══ */
+function proj(i,overrides){
+  const p={...people[i]};
+  if(overrides?.retAge!==undefined)p.retAge=overrides.retAge;
+  const fin=getFin(i);
+  const retExpenses=overrides?.retExpenses!==undefined?overrides.retExpenses/(mode==='couple'?2:1):fin.retExpenses;
+  const nomRet=(overrides?.ret!==undefined?overrides.ret:A.ret)/100;
+  const inflation=(overrides?.inf!==undefined?overrides.inf:A.inf)/100;
+  const brs=A.brs,sumMap={BRS:brs,FRS:brs*2,ERS:brs*3},tgt=sumMap[p.cpfSum];
+  const mRet=Math.pow((1+nomRet)/(1+inflation),1/12)-1;
+  const mCash=Math.pow((1+A.cash/100)/(1+inflation),1/12)-1;
+  const mProp=Math.pow((1+A.prop/100)/(1+inflation),1/12)-1;
+  const mInc=Math.pow(1+p.incomeGrowth/100,1/12)-1;
+  const swr=A.swr/100,wc=96000;
+  const now=new Date(),curMonth=now.getMonth()+1,curYear=now.getFullYear();
+  const mthsFirst=12-curMonth+1;
+  const mortgageRate=fin.propRate/100/12,mortgageTenureMonths=Math.round(fin.propTenure*12);
+  const monthlyMortgage=calcMonthlyPayment(fin.propLoan,fin.propRate,fin.propTenure);
+  let invest=fin.investable,cash=fin.cash,propVal=fin.propValue,propLoan=fin.propLoan;
+  let oa=p.cpfOA,sa=p.cpfSA,ma=p.cpfMA;
+  let inc=p.income,ra=0,boosted=false;
+  let cpfLifeAnnFixed=0,cpfLifeLocked=false;
+  const fireNum=retExpenses/swr; // per-person share (used for per-person row tracking only)
+  const maxA=Math.max(p.retAge,p.lifeExp,75);
+  const cashBufMin=retExpenses/12*3,cashBufTgt=retExpenses/12*12;
+  let mortgageMonthsLeft=mortgageTenureMonths;
+  /* CPF annual interest accumulators */
+  let oaAccum=0,saAccum=0,maAccum=0,raAccum=0;
+  const schedule=[{year:curYear,months:mthsFirst,age:p.age}];
+  let y=curYear+1;
+  while(Math.round(p.age+(y-curYear))<=maxA+1){schedule.push({year:y,months:12,age:Math.round(p.age+(y-curYear))});y++;}
+  let globalMonth=0;
+  let annNet=0,annExp=0,annSav=0,annWd=0,annPRet=0,annCpfInc=0;
+  const rows=[];
+
+  for(let yr=0;yr<schedule.length;yr++){
+    const{year,months,age}=schedule[yr];
+    if(age>maxA)break;
+    annNet=0;annExp=0;annSav=0;annWd=0;annPRet=0;annCpfInc=0;
+    for(let m=0;m<months;m++){
+      globalMonth++;
+      const exactAge=p.age+globalMonth/12;
+      const ageInt=Math.floor(exactAge);
+      const isLastMonthOfYear=(m===months-1);
+
+      /* CPF at 55 */
+      if(ageInt===55&&!boosted){
+        let need=tgt;
+        const saToRA=Math.min(sa,need);need-=saToRA;
+        const oaToRA=Math.min(oa,need);
+        ra=saToRA+oaToRA;
+        const excessSA=sa-saToRA;
+        oa=oa-oaToRA+excessSA;
+        sa=0;saAccum=0; // SA closes, discard SA accrual
+        invest+=oa;oa=0;oaAccum=0; // excess OA to portfolio
+        boosted=true;
+      }
+
+      /* Lock CPF LIFE at 65 */
+      if(ageInt===65&&!cpfLifeLocked){cpfLifeAnnFixed=estLife(ra);cpfLifeLocked=true;}
+
+      const isRet=exactAge>=p.retAge;
+      const mExp=retExpenses/12;
+      const mCpfLife=cpfLifeLocked?cpfLifeAnnFixed/12:0;
+
+      /* CPF monthly interest accrual (NOT added to balances yet) */
+      const{aOA,aSA,aMA}=cpfMonthlyAccrual(oa,sa,ma);
+      oaAccum+=aOA;saAccum+=aSA;maAccum+=aMA;
+      if(ageInt>=55)raAccum+=ra*(0.04/12);
+
+      /* Annual interest credit on Dec 31 (last month of schedule year) */
+      if(isLastMonthOfYear){
+        oa+=oaAccum;sa+=saAccum;ma+=maAccum;ra+=raAccum;
+        oaAccum=0;saAccum=0;maAccum=0;raAccum=0;
+      }
+
+      if(!isRet){
+        /* ACCUMULATION */
+        /* FIX: AW CPF ceiling */
+        const{owCapped,awCapped,total:cpfLiable}=calcCpfLiable(inc,p.additionalWages||0,ageInt,p.cpfType);
+        const rates=cpfRates(ageInt,p.cpfType);
+        const empCpfAnnual=cpfLiable*rates.ee;
+        const empCpfM=empCpfAnnual/12;
+        const mNet=inc/12-empCpfM;
+        const mSav=mNet-fin.expenses/12;
+        annNet+=mNet;annExp+=fin.expenses/12;annSav+=mSav;
+        const ri=invest*mRet,rc=cash*mCash;annPRet+=ri+rc;
+        invest=invest*(1+mRet)+mSav;
+        cash=cash*(1+mCash);
+        /* CPF contributions */
+        const totCpfM=(cpfLiable*(rates.ee+rates.er))/12;
+        const alloc=cpfAlloc(ageInt,p.cpfType);
+        oa+=totCpfM*alloc.oa;
+        sa+=totCpfM*alloc.sa;
+        ma+=totCpfM*alloc.ma;
+        if(alloc.ra)ra+=totCpfM*alloc.ra; // post-55 SA portion routes to RA
+        inc*=(1+mInc);
+      } else {
+        /* DRAWDOWN */
+        const netWd=Math.max(0,mExp-mCpfLife);
+        annCpfInc+=mCpfLife;annNet+=mCpfLife+(p.otherIncome||0)/12;annExp+=mExp;annWd+=netWd;
+        const ri=invest*mRet,rc=cash*mCash;annPRet+=ri+rc;
+        const cashDraw=Math.min(netWd,cash);
+        cash=cash*(1+mCash)-cashDraw;
+        let rem=netWd-cashDraw;
+        if(cash<cashBufMin&&invest>0){const top=Math.min(cashBufTgt-cash,invest);cash+=top;invest-=top;}
+        if(rem>0)invest=Math.max(0,invest*(1+mRet)-rem);
+        else invest=invest*(1+mRet);
+      }
+
+      /* Mortgage */
+      if(propLoan>0&&mortgageMonthsLeft>0){const ip=propLoan*mortgageRate,pp=Math.min(monthlyMortgage-ip,propLoan);propLoan=Math.max(0,propLoan-pp);mortgageMonthsLeft--;}
+      propVal=propVal*(1+mProp);
+
+      /* FIRE detection handled in compute() on combined basis */
+    }
+    const cpfTotal=oa+sa+ma+(age>=55?ra:0);
+    const propEquity=Math.max(0,propVal-propLoan);
+    rows.push({year,age,isRet:age>=p.retAge,netIncome:annNet,expenses:annExp,savings:annSav,withdrawal:annWd,portReturn:annPRet,invest,cash,lnw:invest+cash,cpfIncome:annCpfInc,cpfTotal,totalNWexP:invest+cash+cpfTotal,propVal,propLoan,totalNW:invest+cash+cpfTotal+propEquity,oa,sa,ma,ra});
+  }
+  const retRow=rows.find(r=>r.age===p.retAge)||rows[rows.length-1];
+  return{rows,fireNum,nwAtRet:retRow?retRow.lnw:0,cpfLifeAnn:cpfLifeAnnFixed||estLife(rows[rows.length-1]?.ra||0),fin,portVals:rows.map(r=>r.lnw),cpfTotals:rows.map(r=>r.cpfTotal),oaVals:rows.map(r=>r.oa),saVals:rows.map(r=>r.sa),maVals:rows.map(r=>r.ma),raVals:rows.map(r=>r.ra),ages:rows.map(r=>r.age)};
+}
+
+/* ══ UNIFIED 3-PHASE PROJECTION FOR COMBINED COUPLES ══
+   Phase 1: both working   → today → min(retAge0, retAge1)
+   Phase 2: one retired    → min(retAge)  → max(retAge)
+   Phase 3: both retired   → max(retAge)  → max(lifeExp)
+   CPF is always per-person (individual accounts). Portfolio is shared. */
+function projCombined(overrides){
+  const p0={...people[0]},p1={...people[1]};
+  if(overrides?.retAge!==undefined)  p0.retAge=overrides.retAge;
+  if(overrides?.retAge1!==undefined) p1.retAge=overrides.retAge1;
+  const nomRet=(overrides?.ret!==undefined?overrides.ret:A.ret)/100;
+  const inflation=(overrides?.inf!==undefined?overrides.inf:A.inf)/100;
+  const totalRetExp=overrides?.retExpenses!==undefined?overrides.retExpenses:shared.retExpenses;
+  const swr=A.swr/100;
+  const fireNum=totalRetExp/swr;
+
+  const mRet  =Math.pow((1+nomRet)/(1+inflation),1/12)-1;
+  const mCash =Math.pow((1+A.cash/100)/(1+inflation),1/12)-1;
+  const mProp =Math.pow((1+A.prop/100)/(1+inflation),1/12)-1;
+  const mInc0 =Math.pow(1+p0.incomeGrowth/100,1/12)-1;
+  const mInc1 =Math.pow(1+p1.incomeGrowth/100,1/12)-1;
+  const wc=96000;
+  const brs=A.brs;
+
+  // Shared portfolio (household)
+  let invest=shared.investable, cash=shared.cash;
+  let propVal=shared.propValue, propLoan=shared.propLoan;
+  const mortgageRate=shared.propRate/100/12;
+  const mortgageTenureMonths=Math.round(shared.propTenure*12);
+  const monthlyMortgage=calcMonthlyPayment(shared.propLoan,shared.propRate,shared.propTenure);
+  let mortgageMonthsLeft=mortgageTenureMonths;
+  const cashBufMin=totalRetExp/12*3, cashBufTgt=totalRetExp/12*12;
+
+  // Per-person CPF state
+  const cpf=[
+    {oa:p0.cpfOA,sa:p0.cpfSA,ma:p0.cpfMA,ra:0,boosted:false,lifeFixed:0,lifeLocked:false,
+     oaA:0,saA:0,maA:0,raA:0,inc:p0.income,sumTgt:(()=>{const m={BRS:brs,FRS:brs*2,ERS:brs*3};return m[p0.cpfSum];})()},
+    {oa:p1.cpfOA,sa:p1.cpfSA,ma:p1.cpfMA,ra:0,boosted:false,lifeFixed:0,lifeLocked:false,
+     oaA:0,saA:0,maA:0,raA:0,inc:p1.income,sumTgt:(()=>{const m={BRS:brs,FRS:brs*2,ERS:brs*3};return m[p1.cpfSum];})()},
+  ];
+  const people2=[p0,p1];
+
+  const now=new Date(), curMonth=now.getMonth()+1, curYear=now.getFullYear();
+  const mthsFirst=12-curMonth+1;
+  const maxA=Math.max(p0.retAge,p0.lifeExp,p1.retAge,p1.lifeExp,75);
+
+  // Build schedule anchored to p0's age (older or younger, doesn't matter — we use exact months)
+  const schedule=[{year:curYear,months:mthsFirst,age0:p0.age,age1:p1.age}];
+  let y=curYear+1;
+  while(true){
+    const a0=Math.round(p0.age+(y-curYear));
+    const a1=Math.round(p1.age+(y-curYear));
+    if(a0>maxA&&a1>maxA)break;
+    schedule.push({year:y,months:12,age0:a0,age1:a1});
+    y++;
+  }
+
+  let globalMonth=0;
+  // Per-year accumulators (household combined for table)
+  let annNet=0,annExp=0,annSav=0,annWd=0,annPRet=0,annCpfInc=0;
+  const rows=[];
+
+  for(let yr=0;yr<schedule.length;yr++){
+    const{year,months,age0,age1}=schedule[yr];
+    if(age0>maxA&&age1>maxA)break;
+    annNet=0;annExp=0;annSav=0;annWd=0;annPRet=0;annCpfInc=0;
+
+    for(let m=0;m<months;m++){
+      globalMonth++;
+      const exact0=p0.age+globalMonth/12;
+      const exact1=p1.age+globalMonth/12;
+      const ageInt=[Math.floor(exact0),Math.floor(exact1)];
+      const isLastMonth=(m===months-1);
+      const isRet0=exact0>=p0.retAge;
+      const isRet1=exact1>=p1.retAge;
+
+      // ── Per-person CPF events ──
+      [0,1].forEach(i=>{
+        const c=cpf[i], ai=ageInt[i], pi=people2[i];
+        // CPF at 55
+        if(ai===55&&!c.boosted){
+          let need=c.sumTgt;
+          const saToRA=Math.min(c.sa,need);need-=saToRA;
+          const oaToRA=Math.min(c.oa,need);
+          c.ra=saToRA+oaToRA;
+          const excessSA=c.sa-saToRA;
+          c.oa=c.oa-oaToRA+excessSA;
+          c.sa=0;c.saA=0;
+          invest+=c.oa;c.oa=0;c.oaA=0; // excess OA → shared portfolio
+          c.boosted=true;
+        }
+        // CPF LIFE lock at 65
+        if(ai===65&&!c.lifeLocked){c.lifeFixed=estLife(c.ra);c.lifeLocked=true;}
+        // CPF interest accrual
+        const{aOA,aSA,aMA}=cpfMonthlyAccrual(c.oa,c.sa,c.ma);
+        c.oaA+=aOA;c.saA+=aSA;c.maA+=aMA;
+        if(ai>=55)c.raA+=c.ra*(0.04/12);
+        // Annual credit
+        if(isLastMonth){c.oa+=c.oaA;c.sa+=c.saA;c.ma+=c.maA;c.ra+=c.raA;c.oaA=0;c.saA=0;c.maA=0;c.raA=0;}
+      });
+
+      // ── Portfolio: phase determines income/expense flows ──
+      const mTotalRetExp=totalRetExp/12;
+
+      // Net monthly savings/withdrawal for each person
+      let hNetIncome=0, hExpenses=0, hSavings=0, hWithdrawal=0;
+
+      [isRet0,isRet1].forEach((isRet,i)=>{
+        const c=cpf[i], ai=ageInt[i], pi=people2[i];
+        const mCpfLife=c.lifeLocked?c.lifeFixed/12:0;
+        const mPersonRetExp=mTotalRetExp/2; // each person's share of retirement expenses
+
+        if(!isRet){
+          // Working: earn income, pay expenses, save
+          const{total:cpfLiable}=calcCpfLiable(c.inc,pi.additionalWages||0,ai,pi.cpfType);
+          const rates=cpfRates(ai,pi.cpfType);
+          const empCpfM=cpfLiable*rates.ee/12;
+          const mNet=c.inc/12-empCpfM;
+          // Each working person pays their own half of current expenses.
+          // The retired person's drawdown covers their half of retirement expenses separately.
+          const mExp=shared.expenses/2/12;
+          const mSav=mNet-mExp;
+          hNetIncome+=mNet; hExpenses+=mExp; hSavings+=mSav;
+          // CPF contributions
+          const totCpfM=cpfLiable*(rates.ee+rates.er)/12;
+          const alloc=cpfAlloc(ai,pi.cpfType);
+          c.oa+=totCpfM*alloc.oa;
+          c.sa+=totCpfM*alloc.sa;
+          c.ma+=totCpfM*alloc.ma;
+          if(alloc.ra)c.ra+=totCpfM*alloc.ra; // post-55 SA portion routes to RA
+          c.inc*=(1+(i===0?mInc0:mInc1));
+        } else {
+          // Retired: draw from portfolio
+          const actualWd=Math.max(0,mPersonRetExp-mCpfLife-(pi.otherIncome||0)/12);
+          annCpfInc+=mCpfLife;
+          hNetIncome+=mCpfLife+(pi.otherIncome||0)/12;
+          hExpenses+=mPersonRetExp;
+          hWithdrawal+=actualWd;
+        }
+      });
+
+      // ── Portfolio return this month ──
+      const ri=invest*mRet, rc=cash*mCash;
+      annPRet+=ri+rc;
+
+      // Net household flow
+      const netFlow=hSavings-hWithdrawal;
+      annNet+=hNetIncome; annExp+=hExpenses; annSav+=Math.max(0,netFlow); annWd+=hWithdrawal;
+
+      if(netFlow>=0){
+        // Net accumulation: add savings to invest
+        invest=invest*(1+mRet)+netFlow;
+        cash=cash*(1+mCash);
+      } else {
+        // Net drawdown: use cash buffer strategy on the shortfall
+        const shortage=Math.abs(netFlow);
+        const cashDraw=Math.min(shortage,cash);
+        cash=cash*(1+mCash)-cashDraw;
+        let rem=shortage-cashDraw;
+        if(cash<cashBufMin&&invest>0){const top=Math.min(cashBufTgt-cash,invest);cash+=top;invest-=top;}
+        if(rem>0)invest=Math.max(0,invest*(1+mRet)-rem);
+        else invest=invest*(1+mRet);
+      }
+
+      // ── Mortgage ──
+      if(propLoan>0&&mortgageMonthsLeft>0){
+        const ip=propLoan*mortgageRate,pp=Math.min(monthlyMortgage-ip,propLoan);
+        propLoan=Math.max(0,propLoan-pp);mortgageMonthsLeft--;
+      }
+      propVal=propVal*(1+mProp);
+    }
+
+    // Snapshot at year end
+    const cpfTotal0=cpf[0].oa+cpf[0].sa+cpf[0].ma+(age0>=55?cpf[0].ra:0);
+    const cpfTotal1=cpf[1].oa+cpf[1].sa+cpf[1].ma+(age1>=55?cpf[1].ra:0);
+    const cpfTotal=cpfTotal0+cpfTotal1;
+    const propEquity=Math.max(0,propVal-propLoan);
+    const lnw=invest+cash;
+    rows.push({
+      year,age:age0,age1,isRet:age0>=p0.retAge&&age1>=p1.retAge,
+      isRet0:age0>=p0.retAge,isRet1:age1>=p1.retAge,
+      netIncome:annNet,expenses:annExp,savings:annSav,withdrawal:annWd,
+      portReturn:annPRet,invest,cash,lnw,
+      cpfIncome:annCpfInc,cpfTotal,
+      totalNWexP:lnw+cpfTotal,
+      propVal,propLoan,totalNW:lnw+cpfTotal+propEquity,
+      // Per-person CPF for charts
+      oa0:cpf[0].oa,sa0:cpf[0].sa,ma0:cpf[0].ma,ra0:cpf[0].ra,
+      oa1:cpf[1].oa,sa1:cpf[1].sa,ma1:cpf[1].ma,ra1:cpf[1].ra,
+    });
+  }
+
+  const retRowBoth=rows.find(r=>r.age>=p0.retAge&&r.age1>=p1.retAge)||rows[rows.length-1];
+  const retRowEarly=rows.find(r=>r.age>=Math.min(p0.retAge,p1.retAge))||rows[rows.length-1];
+  const cpfLifeTotal=(cpf[0].lifeFixed||estLife(cpf[0].ra))+(cpf[1].lifeFixed||estLife(cpf[1].ra));
+
+  // Build per-person-style objects for CPF chart compatibility
+  const r0compat={
+    rows:rows.map(r=>({...r,age:r.age,cpfTotal:r.oa0+r.sa0+r.ma0+(r.age>=55?r.ra0:0)})),
+    ages:rows.map(r=>r.age),
+    oaVals:rows.map(r=>r.oa0), saVals:rows.map(r=>r.sa0),
+    maVals:rows.map(r=>r.ma0), raVals:rows.map(r=>r.ra0),
+    cpfLifeAnn:cpf[0].lifeFixed||estLife(cpf[0].ra),
+    fireNum,fin:{...shared,retExpenses:totalRetExp/2,expenses:shared.expenses/2,leanExpenses:shared.leanExpenses/2},
+    nwAtRet:retRowBoth?retRowBoth.lnw:0,
+  };
+  const r1compat={
+    rows:rows.map(r=>({...r,age:r.age1,cpfTotal:r.oa1+r.sa1+r.ma1+(r.age1>=55?r.ra1:0)})),
+    ages:rows.map(r=>r.age1),
+    oaVals:rows.map(r=>r.oa1), saVals:rows.map(r=>r.sa1),
+    maVals:rows.map(r=>r.ma1), raVals:rows.map(r=>r.ra1),
+    cpfLifeAnn:cpf[1].lifeFixed||estLife(cpf[1].ra),
+    fireNum,fin:{...shared,retExpenses:totalRetExp/2,expenses:shared.expenses/2,leanExpenses:shared.leanExpenses/2},
+    nwAtRet:retRowBoth?retRowBoth.lnw:0,
+  };
+
+  return{
+    rows,fireNum,
+    nwAtRet:retRowBoth?retRowBoth.lnw:0,
+    nwAtEarlyRet:retRowEarly?retRowEarly.lnw:0,
+    cpfLifeAnn:cpfLifeTotal,
+    fin:{...shared,retExpenses:totalRetExp,leanExpenses:shared.leanExpenses},
+    portVals:rows.map(r=>r.lnw),
+    cpfTotals:rows.map(r=>r.cpfTotal),
+    ages:rows.map(r=>r.age),
+    // Expose compat objects for CPF chart
+    r0compat,r1compat,
+    isCombinedCouple:true,
+  };
+}
+
+/* ══ COMPUTE ══ */
+function compute(){
+  // Route: combined couple → unified 3-phase projection; all others → per-person proj()
+  let res, isCombinedCouple=false;
+  if(mode==='couple'&&finMode==='combined'){
+    const cr=projCombined();
+    isCombinedCouple=true;
+    // Expose as res array for rendering compatibility
+    res=[cr.r0compat,cr.r1compat];
+    res._combined=cr; // attach full combined result
+  } else {
+    const idxs=mode==='couple'?[0,1]:[0];
+    res=idxs.map(i=>proj(i));
+  }
+  lastRes=res;
+  const cr=res._combined; // null for non-combined-couple
+
+  const r0=res[0],r1=res[1];
+
+  // Combined portfolio values: for combined couple use the unified rows; for others sum halves
+  const cP=cr?cr.portVals:(r1?r0.portVals.map((v,j)=>v+(r1.portVals[j]||0)):r0.portVals);
+  const cC=cr?cr.cpfTotals:(r1?r0.cpfTotals.map((v,j)=>v+(r1.cpfTotals[j]||0)):r0.cpfTotals);
+  const ages=cr?cr.ages:r0.ages;
+
+  const tF=cr?cr.fireNum:res.reduce((s,r)=>s+r.fireNum,0);
+  const tCL=cr?cr.cpfLifeAnn:res.reduce((s,r)=>s+r.cpfLifeAnn,0);
+  const tNW=cr?cr.nwAtRet:res.reduce((s,r)=>s+r.nwAtRet,0);
+  const tI=res.reduce((s,_,i)=>s+people[i].income,0);
+  const tE=cr?cr.fin.expenses:res.reduce((s,r)=>s+r.fin.expenses,0);
+  const tRE=cr?cr.fin.retExpenses:res.reduce((s,r)=>s+r.fin.retExpenses,0);
+  const tLE=cr?cr.fin.leanExpenses:res.reduce((s,r)=>s+r.fin.leanExpenses,0);
+  const retAge=mode==='couple'?Math.max(people[0].retAge,people[1].retAge):people[0].retAge;
+  const lifeExp=mode==='couple'?Math.max(people[0].lifeExp,people[1].lifeExp):people[0].lifeExp;
+
+  // Rows to scan for combined FIRE detection
+  const scanRows=cr?cr.rows:null;
+
+  /* Combined FIRE detection */
+  let combinedFireExact=null;
+  const rowLen=cr?cr.rows.length:Math.min(r0.rows.length,r1?r1.rows.length:r0.rows.length);
+  for(let j=0;j<rowLen;j++){
+    const combinedLNW=cr?cr.rows[j].lnw:(r0.rows[j].lnw+(r1?r1.rows[j].lnw:0));
+    if(combinedLNW>=tF){
+      const prevLNW=j>0?(cr?cr.rows[j-1].lnw:(r0.rows[j-1].lnw+(r1?r1.rows[j-1].lnw:0))):
+                       (cr?(shared.investable+shared.cash):(r0.fin.investable+r0.fin.cash+(r1?r1.fin.investable+r1.fin.cash:0)));
+      const ageAtYearEnd=cr?cr.rows[j].age:r0.rows[j].age;
+      const monthsInYear=j===0?(12-(new Date().getMonth())):12;
+      const ageAtYearStart=ageAtYearEnd-(monthsInYear/12);
+      const frac=combinedLNW>prevLNW?Math.max(0,Math.min(1,(tF-prevLNW)/(combinedLNW-prevLNW))):0;
+      combinedFireExact=ageAtYearStart+frac*(monthsInYear/12);
+      break;
+    }
+  }
+
+  const now=new Date();
+  const curAgeDecimal=people[0].age+(now.getMonth()/12)+(now.getDate()/365);
+  const yearsToFire=combinedFireExact!=null?Math.max(0,combinedFireExact-curAgeDecimal):null;
+
+  // For per-person banners: pass combined rows for combined-couple, per-person res otherwise
+  const bannerRes=cr?[{rows:cr.rows.map(r=>({lnw:r.lnw,age:r.age})),fireNum:tF,fin:{retExpenses:tRE},isCombined:true,cr}]:res;
+
+  renderBanner(tNW,tF,combinedFireExact,retAge,bannerRes,cr);
+  renderMetrics(tF,tNW,tCL,tRE,yearsToFire,curAgeDecimal,retAge);
+  renderGrowth(ages,cP,cC,tF);
+  renderDrawdown(retAge,lifeExp,tNW,tCL,tRE);
+  renderCPF(cr?[cr.r0compat,cr.r1compat]:res);
+  const cpfCur=cr?(cr.rows[0]?.cpfTotal||0):((r0.rows[0]?.cpfTotal||0)+(r1?(r1.rows[0]?.cpfTotal||0):0));
+  renderMilestones(ages,cP,cC,tF,tLE,tE,tI,cpfCur,A.brs,res);
+  renderTable(cr?cr:null,res);
+  validateInputs();
+}
+
+/* ══ RESET ALL ══ */
+function resetAll(){
+  if(!confirm('Reset all inputs to defaults? This cannot be undone.'))return;
+  // Clear localStorage
+  try{localStorage.removeItem(SK);}catch(e){}
+  // Reset people
+  Object.assign(people[0],{age:32,retAge:60,lifeExp:85,income:80000,additionalWages:0,incomeGrowth:3,otherIncome:0,cpfOA:0,cpfSA:0,cpfMA:0,cpfType:'employed',cpfSum:'FRS'});
+  Object.assign(people[1],{age:30,retAge:60,lifeExp:85,income:70000,additionalWages:0,incomeGrowth:3,otherIncome:0,cpfOA:0,cpfSA:0,cpfMA:0,cpfType:'employed',cpfSum:'FRS'});
+  // Reset shared / sep
+  Object.assign(shared,{investable:80000,cash:10000,propValue:0,propLoan:0,propRate:3.5,propTenure:25,expenses:50000,retExpenses:45000,leanExpenses:30000});
+  Object.assign(sep[0],{investable:80000,cash:10000,propValue:0,propLoan:0,propRate:3.5,propTenure:25,expenses:50000,retExpenses:45000,leanExpenses:30000});
+  Object.assign(sep[1],{investable:40000,cash:5000,propValue:0,propLoan:0,propRate:3.5,propTenure:25,expenses:30000,retExpenses:25000,leanExpenses:20000});
+  // Reset assumptions
+  Object.assign(A,{ret:7,cash:2.5,inf:3,swr:4,prop:2,brs:110000});
+  // Reset mode
+  mode='single';finMode='combined';activePerson=0;
+  // Rebuild UI
+  applySliders();
+  setActive('btn-single',true);setActive('btn-couple',false);
+  setActive('btn-combined',true);setActive('btn-separate',false);
+  document.getElementById('hh-mode-wrap').style.display='none';
+  document.getElementById('ptabs-outer').style.display='none';
+  setActive('ptab-0',true);setActive('ptab-1',false);
+  buildPersonInputs();buildHH();
+  // Clear URL hash
+  history.replaceState(null,'',window.location.pathname);
+  sc();
+}
+
+/* ══ INPUT VALIDATION ══ */
+function validateInputs(){
+  const warnings=[];
+  const p0=people[0],p1=mode==='couple'?people[1]:null;
+  if(p0.retAge<=p0.age) warnings.push('Your retirement age must be greater than your current age ('+p0.age+').');
+  if(p1&&p1.retAge<=p1.age) warnings.push('Partner\'s retirement age must be greater than their current age ('+p1.age+').');
+  if(p0.lifeExp<=p0.retAge) warnings.push('Your life expectancy must be greater than your retirement age.');
+  if(p1&&p1.lifeExp<=p1.retAge) warnings.push('Partner\'s life expectancy must be greater than their retirement age.');
+  const src=mode==='single'||(mode==='couple'&&finMode==='combined')?shared:sep[0];
+  if(src.leanExpenses>src.retExpenses&&src.leanExpenses>0&&src.retExpenses>0)
+    warnings.push('LeanFIRE expenses ('+fmt(src.leanExpenses)+') exceed retirement expenses ('+fmt(src.retExpenses)+') — LeanFIRE number will be higher than your FIRE number.');
+  if(src.propLoan>0&&src.propValue>0&&src.propLoan>src.propValue)
+    warnings.push('Outstanding mortgage ('+fmt(src.propLoan)+') exceeds property value ('+fmt(src.propValue)+').');
+  const fin0=mode==='single'?shared:(finMode==='combined'?{expenses:shared.expenses/2}:sep[0]);
+  if(p0.income>0&&fin0.expenses>=p0.income)
+    warnings.push('Your annual expenses equal or exceed your gross income — savings will be zero or negative.');
+  if(p1){
+    const fin1=finMode==='combined'?{expenses:shared.expenses/2}:sep[1];
+    if(p1.income>0&&fin1.expenses>=p1.income)
+      warnings.push('Partner\'s annual expenses equal or exceed their gross income.');
+  }
+  let wEl=document.getElementById('validation-warnings');
+  if(!wEl){
+    wEl=document.createElement('div');
+    wEl.id='validation-warnings';
+    const ref=document.getElementById('sec-fire');
+    if(ref)ref.parentNode.insertBefore(wEl,ref);
+  }
+  if(warnings.length===0){wEl.innerHTML='';return;}
+  wEl.innerHTML='<div style="background:var(--warn-bg);border:1.5px solid var(--warn-border);border-radius:10px;padding:12px 14px;margin-bottom:1rem;">'
+    +'<div style="font-size:12px;font-weight:700;color:var(--warn-text);margin-bottom:6px;">⚠ Input warnings</div>'
+    +warnings.map(w=>'<div style="font-size:12px;color:var(--warn-sub);margin-bottom:3px;line-height:1.5;">• '+w+'</div>').join('')
+    +'</div>';
+}
+
+/* ══ RENDER: BANNER ══ */
+function renderBanner(nw,fire,fireAgeExact,retAge,res,cr){
+  const gap=nw-fire,pct=Math.min(100,Math.round(nw/fire*100));
+  const b=document.getElementById('fire-banner'),t=document.getElementById('fb-t'),s=document.getElementById('fb-s');
+  const fireStr=fireAgeExact!=null&&fireAgeExact<99?`age ${fmtAM(fireAgeExact)}`:'not within projection range';
+  if(nw>=fire){
+    b.className='fbanner ok';t.textContent='✓ On track — FIRE achieved by age '+retAge;
+    s.innerHTML=`Earliest FIRE: <strong>${fireStr}</strong>. Portfolio at retirement (${fmtF(nw)}) exceeds FIRE number (${fmtF(fire)}) by ${fmtF(gap)} — ${pct}% of target.`;
+  } else if(fireAgeExact!=null&&fireAgeExact<99){
+    b.className='fbanner warn';t.textContent=`⚠ FIRE not reached at target age ${retAge} — earliest age: ${fireStr}`;
+    s.innerHTML=`You will be ${fmtF(Math.abs(gap))} short (${pct}% of target) at age ${retAge}. Increase savings or reduce planned expenses.`;
+  } else {
+    b.className='fbanner danger';t.textContent='✗ FIRE number not reached within projection range';
+    s.innerHTML=`At age ${retAge} you\'ll have ${fmtF(nw)} — ${fmtF(Math.abs(gap))} short of ${fmtF(fire)} target (${pct}%).`;
+  }
+
+  const pEl=document.getElementById('person-banners');
+  if(mode!=='couple'){pEl.style.display='none';return;}
+  if(people[0].retAge===people[1].retAge){pEl.style.display='none';return;}
+
+  // Helper: interpolate FIRE age from a series of {age, lnw} points vs a target
+  function interpFireAge(rows,ageKey,lnwKey,target,startLNW){
+    for(let j=0;j<rows.length;j++){
+      const lnw=rows[j][lnwKey??'lnw'];
+      if(lnw>=target){
+        const prev=j>0?rows[j-1][lnwKey??'lnw']:startLNW;
+        const mths=j===0?(12-(new Date().getMonth())):12;
+        const ageEnd=rows[j][ageKey??'age'];
+        const frac=lnw>prev?Math.max(0,Math.min(1,(target-prev)/(lnw-prev))):0;
+        return (ageEnd-(mths/12))+frac*(mths/12);
+      }
+    }
+    return null;
+  }
+
+  pEl.style.display='grid';
+
+  if(cr){
+    // Combined finances: evaluate each person's situation within the shared portfolio
+    // "Can the household portfolio sustain expenses from Person i's retirement age?"
+    // We check nwAtRet at each person's individual retAge vs the combined FIRE number
+    const rows=cr.rows;
+    const html=people.map((p,i)=>{
+      const pRetAge=p.retAge;
+      // LNW at this person's retirement age
+      const retRow=rows.find(r=>r.age>=pRetAge)||rows[rows.length-1];
+      const pNW=retRow?retRow.lnw:0;
+      const pGap=pNW-fire;
+      const pPct=Math.min(100,Math.round(pNW/fire*100));
+      // FIRE age for this person: when does combined LNW first cross fire?
+      const pFireAge=interpFireAge(rows,'age','lnw',fire,shared.investable+shared.cash);
+      const pFireStr=pFireAge!=null?`age ${fmtAM(pFireAge)}`:'not in range';
+      let cls,title,sub;
+      if(pNW>=fire){
+        cls='ok';
+        title=`✓ ${p.label} — household on track for retirement at ${pRetAge}`;
+        sub=`Portfolio (${fmtF(pNW)}) exceeds FIRE number (${fmtF(fire)}) by ${fmtF(pGap)} at age ${pRetAge}.`;
+      } else if(pFireAge!=null){
+        cls='warn';
+        title=`⚠ ${p.label} — household FIRE not achieved at ${pRetAge}`;
+        sub=`Earliest: <strong>${pFireStr}</strong>. ${fmtF(Math.abs(pGap))} short at age ${pRetAge} (${pPct}% of target).`;
+      } else {
+        cls='danger';
+        title=`✗ ${p.label} — FIRE not reached by age ${pRetAge}`;
+        sub=`${fmtF(Math.abs(pGap))} short of ${fmtF(fire)} target (${pPct}%) at age ${pRetAge}.`;
+      }
+      return `<div class="pbanner ${cls}"><div class="pbt">${title}</div><div class="pbs">${sub}</div></div>`;
+    }).join('');
+    pEl.innerHTML=html;
+  } else {
+    // Separate finances: each person has their own independent portfolio and FIRE number
+    const html=res.map((r,i)=>{
+      const p=people[i];
+      const pFire=r.fireNum;
+      const pNW=r.nwAtRet;
+      const pGap=pNW-pFire;
+      const pPct=Math.min(100,Math.round(pNW/pFire*100));
+      const startLNW=r.fin.investable+r.fin.cash;
+      const pFireAge=interpFireAge(r.rows,'age','lnw',pFire,startLNW);
+      const pFireStr=pFireAge!=null?`age ${fmtAM(pFireAge)}`:'not in range';
+      let cls,title,sub;
+      if(pNW>=pFire){
+        cls='ok';
+        title=`✓ ${p.label} — on track for retirement at ${p.retAge}`;
+        sub=`Earliest FIRE: <strong>${pFireStr}</strong>. Portfolio (${fmtF(pNW)}) exceeds target by ${fmtF(pGap)}.`;
+      } else if(pFireAge!=null){
+        cls='warn';
+        title=`⚠ ${p.label} — FIRE at ${p.retAge} not achieved`;
+        sub=`Earliest: <strong>${pFireStr}</strong>. ${fmtF(Math.abs(pGap))} short at age ${p.retAge} (${pPct}% of target).`;
+      } else {
+        cls='danger';
+        title=`✗ ${p.label} — FIRE not reached in range`;
+        sub=`${fmtF(Math.abs(pGap))} short of ${fmtF(pFire)} target (${pPct}%) at age ${p.retAge}.`;
+      }
+      return `<div class="pbanner ${cls}"><div class="pbt">${title}</div><div class="pbs">${sub}</div></div>`;
+    }).join('');
+    pEl.innerHTML=html;
+  }
+}
+
+/* ══ RENDER: METRICS (5 cards) ══ */
+function renderMetrics(fire,nwAtRet,cpfLifeAnn,retExp,yearsToFire,curAge,retAge){
+  const swr=A.swr/100;
+  const monthlyWithdrawal=nwAtRet*swr/12;
+  const yrs=yearsToFire!=null&&yearsToFire>0?fmtAM(yearsToFire):(yearsToFire!=null&&yearsToFire<=0?'Now!':'—');
+  // CPF LIFE: show in thousands with 1dp, e.g. S$2.2k/mo
+  const cpfMo=cpfLifeAnn/12;
+  const cpfStr=cpfMo>=1000?'S$'+(cpfMo/1000).toFixed(1)+'k/mo':'S$'+Math.round(cpfMo)+'/mo';
+  const mthWdStr=monthlyWithdrawal>=1000?'S$'+(monthlyWithdrawal/1000).toFixed(1)+'k/mo':'S$'+Math.round(monthlyWithdrawal)+'/mo';
+  document.getElementById('metrics-grid').innerHTML=`
+    <div class="metric blue"><div class="ml">FIRE number</div><div class="mv">${fmt(fire)}</div><div class="ms">Retirement expenses ÷ ${(swr*100).toFixed(1)}% SWR</div></div>
+    <div class="metric ${yearsToFire!=null&&yearsToFire<=0?'green':'amber'}"><div class="ml">Years to FIRE</div><div class="mv">${yrs}</div><div class="ms">From today, monthly precision</div></div>
+    <div class="metric ${nwAtRet>=fire?'green':'amber'}"><div class="ml">Portfolio at retirement</div><div class="mv">${fmt(nwAtRet)}</div><div class="ms">${nwAtRet>=fire?'Exceeds FIRE target':'Below FIRE target'} at age ${retAge}</div></div>
+    <div class="metric purple"><div class="ml">Monthly withdrawal at SWR</div><div class="mv">${mthWdStr}</div><div class="ms">Portfolio at retirement × ${(swr*100).toFixed(1)}% ÷ 12</div></div>
+    <div class="metric green"><div class="ml">CPF LIFE payout</div><div class="mv">${cpfStr}</div><div class="ms">Locked from RA balance at 65</div></div>`;}
+
+/* ══ CHART HELPERS ══ */
+function mkChart(id,cfg){if(charts[id])charts[id].destroy();charts[id]=new Chart(document.getElementById(id),cfg);}
+const xhair={id:'xh',afterDraw(c){if(!c._x)return;const{ctx,chartArea:{top,bottom}}=c;ctx.save();ctx.beginPath();ctx.moveTo(c._x,top);ctx.lineTo(c._x,bottom);ctx.lineWidth=1;ctx.strokeStyle='rgba(80,100,160,.35)';ctx.setLineDash([4,4]);ctx.stroke();ctx.restore();},afterEvent(c,a){c._x=a.event.type==='mousemove'?a.event.x:null;c.draw();}};
+const tipOpts={mode:'index',intersect:false,backgroundColor:'rgba(18,22,34,.92)',titleColor:'#fff',bodyColor:'#c8d0e0',borderColor:'rgba(255,255,255,.1)',borderWidth:1,padding:12,titleFont:{size:12,weight:'700'},bodyFont:{size:12},itemSort:(a,b)=>b.raw-a.raw,callbacks:{title:items=>'Age '+items[0].label,label:c=>c.raw==null?null:'  '+c.dataset.label+': '+fmtF(c.raw)}};
+
+function renderGrowth(labels,portV,cpfV,fire){
+  mkChart('ch-growth',{type:'line',plugins:[xhair],data:{labels,datasets:[{label:'Investable + cash',data:portV,borderColor:'#1a6fca',backgroundColor:'rgba(26,111,202,.07)',fill:true,tension:.3,pointRadius:0,pointHoverRadius:5,borderWidth:2},{label:'CPF total',data:cpfV,borderColor:'#1e7e34',backgroundColor:'rgba(30,126,52,.07)',fill:true,tension:.3,pointRadius:0,pointHoverRadius:5,borderWidth:2},{label:'FIRE target',data:labels.map(()=>Math.round(fire)),borderColor:'#e53935',borderDash:[6,3],borderWidth:1.5,pointRadius:0,pointHoverRadius:4,fill:false}]},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},plugins:{legend:{display:false},tooltip:tipOpts},scales:{x:{ticks:{autoSkip:true,maxTicksLimit:10,font:{size:11}}},y:{ticks:{callback:v=>fmt(v),font:{size:11}}}}}});
+  document.getElementById('leg-growth').innerHTML=`<span><span class="ldot" style="background:#1a6fca;"></span>Investable + cash</span><span><span class="ldot" style="background:#1e7e34;"></span>CPF total</span><span><span class="ldash" style="border-top-color:#e53935;"></span>FIRE target</span>`;
+}
+
+function buildDrawdownSeries(retAge,lifeExp,portAtRet,cpfLifeAnn,retExpenses,nomRet,inflation){
+  const mRet=Math.pow((1+nomRet/100)/(1+inflation/100),1/12)-1;
+  const mCash=Math.pow((1+A.cash/100)/(1+inflation/100),1/12)-1;
+  const mCpf=cpfLifeAnn/12,mExp=retExpenses/12;
+  const bufMin=mExp*3,bufTgt=mExp*12;
+  const ages=[],vals=[];
+  let inv=portAtRet*.8,cash=portAtRet*.2;
+  for(let a=retAge;a<=lifeExp+5;a++){
+    ages.push(a);vals.push(Math.max(0,Math.round(inv+cash)));
+    for(let m=0;m<12;m++){const wd=Math.max(0,mExp-mCpf);const cd=Math.min(wd,cash);cash=cash*(1+mCash)-cd;let rem=wd-cd;if(cash<bufMin&&inv>0){const top=Math.min(bufTgt-cash,inv);cash+=top;inv-=top;}if(rem>0)inv=Math.max(0,inv*(1+mRet)-rem);else inv=inv*(1+mRet);}
+  }
+  return{ages,vals};
+}
+function renderDrawdown(retAge,lifeExp,portAtRet,cpfLifeAnn,retExp){
+  const{ages,vals}=buildDrawdownSeries(retAge,lifeExp,portAtRet,cpfLifeAnn,retExp,A.ret,A.inf);
+  mkChart('ch-drawdown',{type:'line',plugins:[xhair],data:{labels:ages,datasets:[{label:'Remaining portfolio',data:vals,borderColor:'#1e7e34',backgroundColor:'rgba(30,126,52,.08)',fill:true,tension:.3,pointRadius:0,pointHoverRadius:5,borderWidth:2}]},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},plugins:{legend:{display:false},tooltip:tipOpts},scales:{x:{ticks:{autoSkip:true,maxTicksLimit:10,font:{size:11}}},y:{min:0,ticks:{callback:v=>fmt(v),font:{size:11}}}}}});
+  document.getElementById('leg-drawdown').innerHTML=`<span><span class="ldot" style="background:#1e7e34;"></span>Remaining portfolio (cash buffer; CPF LIFE offsets withdrawals from 65)</span>`;
+}
+
+function renderCPF(res){
+  const cols=[['#1a6fca','#0d4a8f','#34a853','#c77b00'],['#e53935','#8b1a1a','#20a060','#e09000']];
+  const ds=[];
+  res.forEach((r,i)=>{const lb=res.length>1?' ('+(i===0?'You':'Partner')+')':'';const c=cols[i];
+    ds.push({label:'OA'+lb,data:r.oaVals,borderColor:c[0],fill:false,tension:.3,pointRadius:0,pointHoverRadius:4,borderWidth:2});
+    ds.push({label:'SA'+lb,data:r.saVals,borderColor:c[1],fill:false,tension:.3,pointRadius:0,pointHoverRadius:4,borderWidth:1.5,borderDash:[4,3]});
+    ds.push({label:'MA'+lb,data:r.maVals,borderColor:c[2],fill:false,tension:.3,pointRadius:0,pointHoverRadius:4,borderWidth:1.5,borderDash:[2,2]});
+    ds.push({label:'RA'+lb,data:r.ages.map((a,j)=>a>=55?r.raVals[j]:null),borderColor:c[3],fill:false,tension:.3,pointRadius:0,pointHoverRadius:5,borderWidth:2.5,spanGaps:false});
+  });
+  mkChart('ch-cpf',{type:'line',plugins:[xhair],data:{labels:res[0].ages,datasets:ds},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},plugins:{legend:{display:false},tooltip:{...tipOpts}},scales:{x:{ticks:{autoSkip:true,maxTicksLimit:10,font:{size:11}}},y:{ticks:{callback:v=>fmt(v),font:{size:11}}}}}});
+  let lh=`<span><span class="ldot" style="background:#1a6fca;"></span>OA</span><span><span class="ldash" style="border-top-color:#0d4a8f;border-top-style:dashed;"></span>SA (→0 at 55)</span><span><span class="ldash" style="border-top-color:#34a853;border-top-style:dashed;"></span>MA</span><span><span class="ldot" style="background:#c77b00;"></span>RA (from 55)</span>`;
+  if(res.length>1)lh+=`<span style="color:#bbb;margin-left:6px;">Partner:</span><span><span class="ldot" style="background:#e53935;"></span>OA</span><span><span class="ldash" style="border-top-color:#8b1a1a;border-top-style:dashed;"></span>SA</span><span><span class="ldash" style="border-top-color:#20a060;border-top-style:dashed;"></span>MA</span><span><span class="ldot" style="background:#e09000;"></span>RA</span>`;
+  document.getElementById('leg-cpf').innerHTML=lh;
+}
+
+/* ══ MILESTONES ══ */
+function renderMilestones(ages,portV,cpfV,fire,leanExp,totExp,totInc,cpfCur,brs,res){
+  const swr=A.swr/100,rr=Math.pow((1+A.ret/100)/(1+A.inf/100),1)-1;
+  const leanFire=leanExp/swr,cpfFRS=(mode==='couple'?2:1)*brs*2,cpfERS=(mode==='couple'?2:1)*brs*3;
+  const retAge=mode==='couple'?Math.max(people[0].retAge,people[1].retAge):people[0].retAge;
+  const coastFire=fire/Math.pow(1+rr,retAge-people[0].age),cur=portV[0]||0;
+  const invInc=cur*rr,invIncPct=totExp>0?Math.round(invInc/totExp*100):0;
+  function hitAge(t,arr){for(let j=0;j<ages.length;j++){if((arr[j]||0)>=t)return ages[j];}return null;}
+  function bar(name,cv,tgt,col,arr,note){const pct=Math.min(100,tgt>0?Math.round(cv/tgt*100):100),done=cv>=tgt,ha=hitAge(tgt,arr||portV);const bCls=done?'done':ha?'soon':'far',bTxt=done?'Achieved':ha?'Age '+ha:'Beyond range';return`<div class="ms-item"><div class="ms-hd"><span class="ms-name">${name} <span class="ms-badge ${bCls}">${bTxt}</span></span><span class="ms-amt">${fmt(Math.min(cv,tgt))} / ${fmt(tgt)}</span></div><div class="ms-bar-bg"><div class="ms-bar-fg" style="width:${pct}%;background:${done?'#1e7e34':col};"></div></div><div class="ms-sub"><span>${note||''}</span><span>${pct}%</span></div></div>`;}
+  const ip=Math.min(100,invIncPct),ibs=invIncPct>=100?'done':invIncPct>50?'soon':'far';
+  const cp=Math.min(100,coastFire>0?Math.round(cur/coastFire*100):100),cbs=cur>=coastFire?'done':hitAge(coastFire,portV)?'soon':'far';
+  document.getElementById('ms-card').innerHTML=
+    `<p class="ms-group-hd">Income &amp; savings benchmarks</p>`+bar('1× annual income saved',cur,totInc,'#1a6fca',portV,'')+bar('5× annual expenses saved',cur,totExp*5,'#1a6fca',portV,'')+
+    `<div class="ms-item"><div class="ms-hd"><span class="ms-name">Investment income covers expenses <span class="ms-badge ${ibs}">${invIncPct>=100?'Achieved':invIncPct+'% there'}</span></span><span class="ms-amt">${fmt(invInc)} / ${fmt(totExp)} p.a.</span></div><div class="ms-bar-bg"><div class="ms-bar-fg" style="width:${ip}%;background:${invIncPct>=100?'#1e7e34':'#7c6fda'};"></div></div><div class="ms-sub"><span>Portfolio real return vs annual expenses</span><span>${invIncPct}%</span></div></div>`+
+    `<p class="ms-group-hd">FIRE milestones</p>`+bar('LeanFIRE — '+fmt(leanExp)+'/yr',cur,leanFire,'#1a6fca',portV,'Minimal lifestyle retirement')+
+    `<div class="ms-item"><div class="ms-hd"><span class="ms-name">CoastFIRE <span class="ms-badge ${cbs}">${cur>=coastFire?'Achieved':hitAge(coastFire,portV)?'Age '+hitAge(coastFire,portV):'Beyond range'}</span></span><span class="ms-amt">${fmt(Math.min(cur,coastFire))} / ${fmt(coastFire)}</span></div><div class="ms-bar-bg"><div class="ms-bar-fg" style="width:${cp}%;background:${cur>=coastFire?'#1e7e34':'#f4a020'};"></div></div><div class="ms-sub"><span>Lump sum today to coast to FIRE without further contributions</span><span>${cp}%</span></div></div>`+
+    bar('Half of FIRE number',cur,fire/2,'#1a6fca',portV,'')+bar('Full FIRE — '+fmt(fire),cur,fire,'#1a6fca',portV,'Target retirement portfolio')+
+    `<p class="ms-group-hd">CPF targets</p>`+bar('CPF FRS met',cpfCur,cpfFRS,'#f4a020',cpfV,'Full Retirement Sum')+bar('CPF ERS met',cpfCur,cpfERS,'#f4a020',cpfV,'Enhanced Retirement Sum');
+}
+
+/* ══ TABLE ══ */
+function renderTable(cr,res){
+  const ic=mode==='couple';
+  const cols=['Year','Age (You)',ic?'Age (Partner)':null,'Net Income','Expenses','Savings','Withdrawal','Portfolio Return','Liquid Net Worth','CPF Income','CPF Total','Total NW excl. Property','Property Value','Property Mortgage','Total Net Worth'].filter(Boolean);
+  document.getElementById('tbl-head').innerHTML=cols.map(c=>`<th>${c}</th>`).join('');
+  let html='';
+
+  if(cr){
+    // Unified combined-couple rows — all data already combined in cr.rows
+    const rows=cr.rows;
+    for(let j=0;j<rows.length;j++){
+      const r=rows[j];
+      const bothRet=r.age>=people[0].retAge&&r.age1>=people[1].retAge;
+      const eitherRetStart=(r.age===people[0].retAge)||(r.age1===people[1].retAge);
+      html+=`<tr class="${bothRet?'ret-row':''}">`;
+      html+=`<td>${eitherRetStart?'★ ':''}${r.year}</td>`;
+      html+=`<td>${r.age}</td><td>${r.age1}</td>`;
+      html+=`<td>${fmtT(r.netIncome)}</td><td>${fmtT(r.expenses)}</td>`;
+      const sv=r.savings-r.withdrawal;
+      html+=`<td class="${sv>0?'c-pos':sv<0?'c-neg':''}">${fmtT(r.savings)}</td>`;
+      html+=`<td>${r.withdrawal>0?'<span class="c-neg">-S$'+Math.round(r.withdrawal).toLocaleString()+'</span>':'<span class="c-dim">—</span>'}</td>`;
+      html+=`<td class="${r.portReturn>0?'c-pos':''}">${fmtT(r.portReturn)}</td>`;
+      html+=`<td>${fmtT(r.lnw)}</td>`;
+      html+=`<td class="${r.cpfIncome>0?'c-pos':''}">${r.cpfIncome>0?fmtT(r.cpfIncome):'<span class="c-dim">—</span>'}</td>`;
+      html+=`<td>${fmtT(r.cpfTotal)}</td><td>${fmtT(r.totalNWexP)}</td>`;
+      html+=`<td>${r.propVal>1?fmtT(r.propVal):'<span class="c-dim">—</span>'}</td>`;
+      html+=`<td>${r.propLoan>1?'<span class="c-neg">-S$'+Math.round(r.propLoan).toLocaleString()+'</span>':'<span class="c-dim">—</span>'}</td>`;
+      html+=`<td style="font-weight:700;">${fmtT(r.totalNW)}</td></tr>`;
+    }
+  } else {
+    // Per-person rows (single or separate-finance couple) — sum where needed
+    const r0=res[0],r1=res[1];
+    for(let j=0;j<r0.rows.length;j++){
+      const a=r0.rows[j],b=r1?r1.rows[j]:null;
+      const isRet=a.isRet||(b&&b.isRet);
+      const iRS=a.age===people[0].retAge||(b&&b.age===people[1].retAge);
+      const nI=a.netIncome+(b?b.netIncome:0),ex=a.expenses+(b?b.expenses:0),sv=a.savings+(b?b.savings:0);
+      const wd=a.withdrawal+(b?b.withdrawal:0),pR=a.portReturn+(b?b.portReturn:0),lnw=a.lnw+(b?b.lnw:0);
+      const cI=a.cpfIncome+(b?b.cpfIncome:0),cT=a.cpfTotal+(b?b.cpfTotal:0),tNe=a.totalNWexP+(b?b.totalNWexP:0);
+      const pV=a.propVal+(b?b.propVal:0),pL=a.propLoan+(b?b.propLoan:0),tNW=a.totalNW+(b?b.totalNW:0);
+      html+=`<tr class="${isRet?'ret-row':''}"><td>${iRS?'★ ':''}${a.year}</td><td>${a.age}</td>`;
+      if(ic)html+=`<td>${b?b.age:''}</td>`;
+      html+=`<td>${fmtT(nI)}</td><td>${fmtT(ex)}</td><td class="${sv>0?'c-pos':sv<0?'c-neg':''}">${fmtT(sv)}</td>`;
+      html+=`<td>${wd>0?'<span class="c-neg">-S$'+Math.round(wd).toLocaleString()+'</span>':'<span class="c-dim">—</span>'}</td>`;
+      html+=`<td class="${pR>0?'c-pos':''}">${fmtT(pR)}</td><td>${fmtT(lnw)}</td>`;
+      html+=`<td class="${cI>0?'c-pos':''}">${cI>0?fmtT(cI):'<span class="c-dim">—</span>'}</td>`;
+      html+=`<td>${fmtT(cT)}</td><td>${fmtT(tNe)}</td>`;
+      html+=`<td>${pV>1?fmtT(pV):'<span class="c-dim">—</span>'}</td>`;
+      html+=`<td>${pL>1?'<span class="c-neg">-S$'+Math.round(pL).toLocaleString()+'</span>':'<span class="c-dim">—</span>'}</td>`;
+      html+=`<td style="font-weight:700;">${fmtT(tNW)}</td></tr>`;
+    }
+  }
+  document.getElementById('tbl-body').innerHTML=html;
+}
+
+/* ══ SCENARIO ══ */
+function resetScenario(){syncScenarioDefaults();renderScenario();}
+function renderScenario(){
+  if(!lastRes)return;
+  const scRetAge0=gv('sc-retAge0'),scRetAge1=gv('sc-retAge1');
+  const scRetExp=gv('sc-retExp'),scRet=gv('sc-ret'),scInf=gv('sc-inf');
+  const baseRetAge=mode==='couple'?Math.max(people[0].retAge,people[1].retAge):people[0].retAge;
+  const baseLifeExp=mode==='couple'?Math.max(people[0].lifeExp,people[1].lifeExp):people[0].lifeExp;
+  const cr=lastRes._combined;
+
+  // Base values from cached results
+  const baseCpfLife=cr?cr.cpfLifeAnn:lastRes.reduce((s,r)=>s+r.cpfLifeAnn,0);
+  const baseRetExp=cr?cr.fin.retExpenses:lastRes.reduce((s,r)=>s+r.fin.retExpenses,0);
+  const baseNW=cr?cr.nwAtRet:lastRes.reduce((s,r)=>s+r.nwAtRet,0);
+
+  // Scenario projection
+  let scNW,scCpfLife,scRetAgeFinal;
+  if(mode==='couple'&&finMode==='combined'){
+    const scCr=projCombined({retAge:scRetAge0,retAge1:scRetAge1,retExpenses:scRetExp,ret:scRet,inf:scInf});
+    scNW=scCr.nwAtRet; scCpfLife=scCr.cpfLifeAnn;
+    scRetAgeFinal=Math.max(scRetAge0,scRetAge1);
+  } else {
+    const scIdxs=mode==='couple'?[0,1]:[0];
+    const scRes=scIdxs.map(i=>proj(i,{retAge:i===0?scRetAge0:scRetAge1,retExpenses:scRetExp,ret:scRet,inf:scInf}));
+    scNW=scRes.reduce((s,r)=>s+r.nwAtRet,0);
+    scCpfLife=scRes.reduce((s,r)=>s+r.cpfLifeAnn,0);
+    scRetAgeFinal=mode==='couple'?Math.max(scRetAge0,scRetAge1):scRetAge0;
+  }
+
+  const startAge=Math.min(baseRetAge,scRetAgeFinal);
+  const endAge=baseLifeExp+5;
+  const baseAges=[];for(let a=startAge;a<=endAge;a++)baseAges.push(a);
+  const{ages:ba,vals:bv}=buildDrawdownSeries(baseRetAge,endAge,baseNW,baseCpfLife,baseRetExp,A.ret,A.inf);
+  const{ages:sa,vals:sv}=buildDrawdownSeries(scRetAgeFinal,endAge,scNW,scCpfLife,scRetExp,scRet,scInf);
+  const bMap=new Map(ba.map((a,j)=>[a,bv[j]])),sMap=new Map(sa.map((a,j)=>[a,sv[j]]));
+  const bVals=baseAges.map(a=>bMap.get(a)??null),sVals=baseAges.map(a=>sMap.get(a)??null);
+  if(charts['ch-scenario'])charts['ch-scenario'].destroy();
+  charts['ch-scenario']=new Chart(document.getElementById('ch-scenario'),{type:'line',plugins:[xhair],data:{labels:baseAges,datasets:[{label:'Base projection',data:bVals,borderColor:'#1a6fca',backgroundColor:'rgba(26,111,202,.08)',fill:true,tension:.3,pointRadius:0,pointHoverRadius:5,borderWidth:2.5,borderDash:[]},{label:'Scenario',data:sVals,borderColor:'#e53935',backgroundColor:'rgba(229,57,53,.06)',fill:true,tension:.3,pointRadius:0,pointHoverRadius:5,borderWidth:2,borderDash:[6,4]}]},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},plugins:{legend:{display:false},tooltip:tipOpts},scales:{x:{title:{display:true,text:'Age',font:{size:11}},ticks:{autoSkip:true,maxTicksLimit:12,font:{size:11}}},y:{min:0,ticks:{callback:v=>fmt(v),font:{size:11}}}}}});
+  document.getElementById('leg-scenario').innerHTML=`<span><span class="ldot" style="background:#1a6fca;"></span>Base (retire ${baseRetAge}, ${fmt(baseRetExp)}/yr)</span><span><span class="ldash" style="border-top-color:#e53935;border-top-style:dashed;"></span>Scenario (retire ${scRetAgeFinal}, ${fmt(scRetExp)}/yr, ${scRet}% ret, ${scInf}% inf)</span>`;
+  const baseFire=cr?cr.fireNum:lastRes.reduce((s,r)=>s+r.fireNum,0);
+  function scanFireAge(rows,lnwKey,ageKey,target,startLNW){for(let j=0;j<rows.length;j++){const lnw=rows[j][lnwKey];if(lnw>=target){const prev=j>0?rows[j-1][lnwKey]:startLNW;const mths=j===0?(12-(new Date().getMonth())):12;const as=rows[j][ageKey]-(mths/12);const fr=lnw>prev?Math.max(0,Math.min(1,(target-prev)/(lnw-prev))):0;return as+fr*(mths/12);}}return null;}
+  const bFireEx=cr?scanFireAge(cr.rows,'lnw','age',baseFire,shared.investable+shared.cash):(()=>{const r0=lastRes[0],r1=lastRes[1];for(let j=0;j<r0.rows.length;j++){const cl=r0.rows[j].lnw+(r1?r1.rows[j].lnw:0);if(cl>=baseFire){const prev=j>0?(r0.rows[j-1].lnw+(r1?r1.rows[j-1].lnw:0)):(r0.fin.investable+r0.fin.cash+(r1?r1.fin.investable+r1.fin.cash:0));const mths=j===0?(12-(new Date().getMonth())):12;const as=r0.rows[j].age-(mths/12);const fr=cl>prev?Math.max(0,Math.min(1,(baseFire-prev)/(cl-prev))):0;return as+fr*(mths/12);}}return null;})();
+  const diff=(v1,v2,fmt2=fmtF)=>{const d=v2-v1;return`<span class="${d>0?'c-pos':d<0?'c-neg':''}">${d>=0?'+':''}${fmt2(d)}</span>`;};
+  document.getElementById('sc-summary-table').innerHTML=`<thead><tr><th></th><th>Base</th><th>Scenario</th><th>Difference</th></tr></thead><tbody>
+    <tr><td>Retirement age</td><td>${baseRetAge}</td><td>${scRetAgeFinal}</td><td>${diff(baseRetAge,scRetAgeFinal,(d)=>d+' yrs')}</td></tr>
+    <tr><td>Retirement expenses / yr</td><td>${fmtF(baseRetExp)}</td><td>${fmtF(scRetExp)}</td><td>${diff(baseRetExp,scRetExp)}</td></tr>
+    <tr><td>FIRE number</td><td>${fmtF(baseFire)}</td><td>${fmtF(scRetExp/(A.swr/100))}</td><td>${diff(baseFire,scRetExp/(A.swr/100))}</td></tr>
+    <tr><td>Portfolio at retirement</td><td>${fmtF(baseNW)}</td><td>${fmtF(scNW)}</td><td>${diff(baseNW,scNW)}</td></tr>
+    <tr><td>CPF LIFE /mo</td><td>${fmtF(baseCpfLife/12)}</td><td>${fmtF(scCpfLife/12)}</td><td>${diff(baseCpfLife/12,scCpfLife/12)}</td></tr>
+    <tr><td>Earliest FIRE age</td><td>${bFireEx!=null?fmtAM(bFireEx):'Not reached'}</td><td>—</td><td>—</td></tr>
+  </tbody>`;
+}
+
+/* ══ MONTE CARLO ══ */
+function runMonteCarlo(){
+  if(!lastRes)return;
+  const statsEl=document.getElementById('mc-stats');
+  statsEl.innerHTML='<div class="mc-stat" style="grid-column:span 4;text-align:center;padding:2rem;color:#888;">Running simulation…</div>';
+
+  setTimeout(()=>{
+    const N=parseInt(document.getElementById('mc-n').value)||500;
+    const annVol=parseInt(document.getElementById('mc-vol').value)/100;
+    const cr=lastRes._combined;
+    const retAge=mode==='couple'?Math.max(people[0].retAge,people[1].retAge):people[0].retAge;
+    const lifeExp=mode==='couple'?Math.max(people[0].lifeExp,people[1].lifeExp):people[0].lifeExp;
+    const tNW=cr?cr.nwAtRet:lastRes.reduce((s,r)=>s+r.nwAtRet,0);
+    const tCpfLife=cr?cr.cpfLifeAnn:lastRes.reduce((s,r)=>s+r.cpfLifeAnn,0);
+    const tRetExp=cr?cr.fin.retExpenses:lastRes.reduce((s,r)=>s+r.fin.retExpenses,0);
+    const realRet=Math.pow((1+A.ret/100)/(1+A.inf/100),1)-1;
+    const mSig=annVol/Math.sqrt(12);
+    // Drift-adjusted μ so median path matches deterministic: μ = ln(1+r)/12 - σ²/2
+    const mMu=Math.log(1+realRet)/12-(mSig*mSig)/2;
+    const mCash=Math.pow((1+A.cash/100)/(1+A.inf/100),1/12)-1;
+    const mExp=tRetExp/12,mCpf=tCpfLife/12;
+    const bufMin=mExp*3,bufTgt=mExp*12;
+    const nYears=lifeExp+5-retAge+1;
+    // Box-Muller for normal random
+    function randN(){let u=0,v=0;while(!u)u=Math.random();while(!v)v=Math.random();return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v);}
+    // Run N paths
+    const allPaths=[];
+    for(let n=0;n<N;n++){
+      let inv=tNW*0.8,cash=tNW*0.2;
+      const path=[Math.round(inv+cash)];
+      for(let y=0;y<nYears;y++){
+        for(let m=0;m<12;m++){
+          const monthlyR=Math.exp(mMu+mSig*randN())-1;
+          const wd=Math.max(0,mExp-(y+retAge>=65?mCpf:0));
+          const cd=Math.min(wd,cash);cash=cash*(1+mCash)-cd;let rem=wd-cd;
+          if(cash<bufMin&&inv>0){const top=Math.min(bufTgt-cash,inv);cash+=top;inv-=top;}
+          if(rem>0)inv=Math.max(0,inv*(1+monthlyR)-rem);else inv=inv*(1+monthlyR);
+          if(inv+cash<0){inv=0;cash=0;}
+        }
+        path.push(Math.max(0,Math.round(inv+cash)));
+      }
+      allPaths.push(path);
+    }
+    // Extract percentiles at each year
+    const ages=[];for(let a=retAge;a<=lifeExp+5;a++)ages.push(a);
+    const p10=[],p25=[],p50=[],p75=[],p90=[];
+    for(let y=0;y<=nYears;y++){
+      const col=allPaths.map(p=>p[y]).sort((a,b)=>a-b);
+      const pct=q=>{const idx=Math.floor(q*col.length);return col[Math.min(idx,col.length-1)];};
+      p10.push(pct(0.10));p25.push(pct(0.25));p50.push(pct(0.50));p75.push(pct(0.75));p90.push(pct(0.90));
+    }
+    // Survival stats
+    const atLife=allPaths.map(p=>p[lifeExp-retAge]||0);
+    const survLife=atLife.filter(v=>v>0).length;
+    const atLifePlus5=allPaths.map(p=>p[Math.min(lifeExp+5-retAge,p.length-1)]||0);
+    const survLife5=atLifePlus5.filter(v=>v>0).length;
+    const medAtLife=atLife.slice().sort((a,b)=>a-b)[Math.floor(N/2)];
+
+    // Base deterministic series
+    const{ages:da,vals:dv}=buildDrawdownSeries(retAge,lifeExp+5,tNW,tCpfLife,tRetExp,A.ret,A.inf);
+
+    // Render chart with band fill using Chart.js
+    if(charts['ch-mc'])charts['ch-mc'].destroy();
+    charts['ch-mc']=new Chart(document.getElementById('ch-mc'),{
+      type:'line',plugins:[xhair],
+      data:{labels:ages,datasets:[
+        {label:'p10–p90 (outer)',data:p90,borderColor:'transparent',backgroundColor:'rgba(26,111,202,0.10)',fill:'+1',tension:.3,pointRadius:0},
+        {label:'_p10',data:p10,borderColor:'transparent',backgroundColor:'rgba(26,111,202,0.10)',fill:false,tension:.3,pointRadius:0},
+        {label:'p25–p75 (inner)',data:p75,borderColor:'transparent',backgroundColor:'rgba(26,111,202,0.18)',fill:'+1',tension:.3,pointRadius:0},
+        {label:'_p25',data:p25,borderColor:'transparent',backgroundColor:'rgba(26,111,202,0.18)',fill:false,tension:.3,pointRadius:0},
+        {label:'Median (p50)',data:p50,borderColor:'#1a6fca',backgroundColor:'transparent',fill:false,tension:.3,pointRadius:0,pointHoverRadius:5,borderWidth:2.5},
+        {label:'Base (deterministic)',data:dv,borderColor:'#888',backgroundColor:'transparent',fill:false,tension:.3,pointRadius:0,pointHoverRadius:4,borderWidth:1.5,borderDash:[5,4]},
+      ]},
+      options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},
+        plugins:{legend:{display:false},tooltip:{...tipOpts,callbacks:{title:items=>'Age '+items[0].label,label:c=>['_p10','_p25'].includes(c.dataset.label)?null:c.raw==null?null:'  '+c.dataset.label+': '+fmtF(c.raw)}}},
+        scales:{x:{title:{display:true,text:'Age in retirement',font:{size:11}},ticks:{autoSkip:true,maxTicksLimit:12,font:{size:11}}},y:{min:0,ticks:{callback:v=>fmt(v),font:{size:11}}}}}
+    });
+    document.getElementById('leg-mc').innerHTML=`<span><span class="ldot" style="background:rgba(26,111,202,0.3);"></span>p10–p90 range</span><span><span class="ldot" style="background:rgba(26,111,202,0.5);"></span>p25–p75 range</span><span><span class="ldot" style="background:#1a6fca;"></span>Median (p50)</span><span><span class="ldash" style="border-top-color:#888;"></span>Base (deterministic)</span>`;
+
+    // Stats
+    const survPct=Math.round(survLife/N*100);
+    const surv5Pct=Math.round(survLife5/N*100);
+    statsEl.innerHTML=`
+      <div class="mc-stat ${survPct>=80?'green':survPct>=60?'amber':'red'}"><div class="ml">Survival to age ${lifeExp}</div><div class="mv">${survPct}%</div><div class="ms">${survLife} of ${N} paths</div></div>
+      <div class="mc-stat ${surv5Pct>=75?'green':surv5Pct>=50?'amber':'red'}"><div class="ml">Survival to age ${lifeExp+5}</div><div class="mv">${surv5Pct}%</div><div class="ms">${survLife5} of ${N} paths</div></div>
+      <div class="mc-stat"><div class="ml">Median at age ${lifeExp}</div><div class="mv">${fmt(medAtLife)}</div><div class="ms">50th percentile portfolio</div></div>
+      <div class="mc-stat"><div class="ml">Volatility (σ) used</div><div class="mv">${annVol*100}%</div><div class="ms">Annualised, log-normal</div></div>`;
+  },50);
+}
+
+/* ══ VERSION & CHANGELOG ══ */
+const VERSION='1.0.0';
+const CHANGELOG=[
+  {
+    version:'1.0.0',
+    date:'2026-04-27',
+    sections:[
+      {title:'Core planner',items:[
+        'Single and couple mode with combined or separate finances',
+        'Three-phase projection for combined couples with different retirement ages',
+        'Monthly compounding for all portfolio and CPF calculations',
+      ]},
+      {title:'CPF engine',items:[
+        'Age-banded contribution rates and OA/SA/MA allocation (2026 MOM rates)',
+        'S$8,000/month ordinary wage ceiling + Additional Wage (AW) ceiling',
+        'CPF interest accrues monthly, credited annually on Dec 31',
+        'SA closes at 55 — excess to OA, excess OA to investable portfolio',
+        'Retirement Account (RA) created at 55; CPF LIFE payout locked at 65',
+      ]},
+      {title:'Projections & analysis',items:[
+        'Year-by-year projection table with 15 columns',
+        'Scenario analysis — compare drawdown under different assumptions',
+        'Monte Carlo simulation — sequence of returns risk with percentile bands',
+        'Milestones tracker — LeanFIRE, CoastFIRE, CPF FRS/ERS progress',
+      ]},
+      {title:'App features',items:[
+        'Dark mode with system preference detection and manual toggle',
+        'Shareable URLs — full plan state encoded in URL hash',
+        'Auto-save to localStorage on every change',
+        'Export inputs (JSON), import from JSON, download CSV report',
+        'Collapsible sections with state persistence',
+        'Mobile responsive layout',
+      ]},
+    ],
+  },
+];
+
+function openChangelog(){
+  const body=document.getElementById('changelog-body');
+  body.innerHTML=CHANGELOG.map(v=>`
+    <div style="margin-bottom:1.5rem;">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
+        <span style="font-size:15px;font-weight:700;color:var(--text);">v${v.version}</span>
+        <span style="font-size:11px;color:var(--text4);background:var(--surface2);border:1px solid var(--border);border-radius:20px;padding:2px 8px;">${v.date}</span>
+        ${v.version===VERSION?'<span style="font-size:10px;font-weight:600;color:var(--ok-text);background:var(--ok-bg);border:1px solid var(--ok-border);border-radius:20px;padding:2px 8px;">Current</span>':''}
+      </div>
+      ${v.sections.map(s=>`
+        <div style="margin-bottom:10px;">
+          <div style="font-size:11px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;">${s.title}</div>
+          <ul style="padding-left:1.2rem;">
+            ${s.items.map(i=>`<li style="font-size:13px;color:var(--text2);margin-bottom:3px;line-height:1.5;">${i}</li>`).join('')}
+          </ul>
+        </div>`).join('')}
+    </div>`).join('<hr style="border:none;border-top:1px solid var(--border);margin:1rem 0;">');
+  document.getElementById('changelog-modal').classList.add('open');
+}
+function closeChangelog(){document.getElementById('changelog-modal').classList.remove('open');}
+
+/* ══ URL STATE ENCODING ══
+   Plan state → JSON → UTF-8 bytes → base64url → URL hash
+   Format: #v{VERSION}/{base64url-data}
+   No external compression library needed — uses built-in btoa/atob          */
+
+function encodeState(snap){
+  try{
+    const json=JSON.stringify(snap);
+    // btoa needs latin1; encode unicode safely
+    const b64=btoa(encodeURIComponent(json).replace(/%([0-9A-F]{2})/g,(_,p)=>String.fromCharCode(parseInt(p,16))));
+    // Make URL-safe
+    return b64.replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+  }catch(e){return null;}
+}
+
+function decodeState(str){
+  try{
+    // Restore base64 padding and standard chars
+    const b64=str.replace(/-/g,'+').replace(/_/g,'/')+'==='.slice(0,(4-str.length%4)%4);
+    const json=decodeURIComponent(atob(b64).split('').map(c=>'%'+('00'+c.charCodeAt(0).toString(16)).slice(-2)).join(''));
+    return JSON.parse(json);
+  }catch(e){return null;}
+}
+
+/* ══ SCHEMA MIGRATION ══
+   Called when loading a URL-encoded state that has an older schema version.
+   Add a new case here each time you ship a breaking schema change.           */
+function migrateState(snap,fromVersion){
+  // Currently on v1.0.0 — no migrations needed yet.
+  // Template for future migrations:
+  // if(!fromVersion || compareVersions(fromVersion,'1.1.0')<0){
+  //   // Add new field with default
+  //   snap.people.forEach(p=>{ if(p.newField===undefined) p.newField=defaultValue; });
+  //   snap.schemaVersion='1.1.0';
+  // }
+  return snap;
+}
+
+function compareVersions(a,b){
+  const pa=a.split('.').map(Number), pb=b.split('.').map(Number);
+  for(let i=0;i<3;i++){if(pa[i]>pb[i])return 1;if(pa[i]<pb[i])return -1;}
+  return 0;
+}
+
+/* ══ WRITE URL hash whenever state changes ══ */
+function pushStateToUrl(snap){
+  try{
+    const encoded=encodeState({...snap,schemaVersion:VERSION});
+    if(encoded){
+      const newHash='#v'+VERSION+'/'+encoded;
+      // Use replaceState so we don't pollute browser history on every keystroke
+      history.replaceState(null,'',newHash);
+    }
+  }catch(e){}
+}
+
+/* ══ READ URL hash on load ══ */
+function loadFromUrl(){
+  try{
+    const hash=window.location.hash;
+    if(!hash||!hash.startsWith('#v'))return false;
+    const slash=hash.indexOf('/');
+    if(slash===-1)return false;
+    const urlVersion=hash.slice(2,slash);   // e.g. "1.0.0"
+    const encoded=hash.slice(slash+1);
+    if(!encoded)return false;
+    let snap=decodeState(encoded);
+    if(!snap)return false;
+    // Migrate if needed
+    snap=migrateState(snap,snap.schemaVersion||urlVersion);
+    // Apply
+    mode=snap.mode||'single';
+    finMode=snap.finMode||'combined';
+    if(snap.people)snap.people.forEach((p,i)=>{if(people[i])Object.assign(people[i],p);});
+    if(snap.shared)Object.assign(shared,snap.shared);
+    if(snap.sep)snap.sep.forEach((s,i)=>{if(sep[i])Object.assign(sep[i],s);});
+    if(snap.A)Object.assign(A,snap.A);
+    // Show update banner if URL version differs from current
+    if(urlVersion && urlVersion!==VERSION){
+      const banner=document.getElementById('update-banner');
+      const txt=document.getElementById('update-text');
+      if(banner&&txt){
+        txt.textContent=`This plan was created on v${urlVersion}. You're now on v${VERSION}.`;
+        banner.style.display='flex';
+      }
+    }
+    return true;
+  }catch(e){return false;}
+}
+
+/* ══ SHARE URL ══ */
+function shareUrl(){
+  const snap=snapshot();
+  const encoded=encodeState({...snap,schemaVersion:VERSION});
+  if(!encoded){alert('Could not generate share URL.');return;}
+  const url=window.location.origin+window.location.pathname+'#v'+VERSION+'/'+encoded;
+  document.getElementById('share-url-input').value=url;
+  document.getElementById('share-msg').textContent='';
+  document.getElementById('share-modal').classList.add('open');
+}
+function closeShare(){document.getElementById('share-modal').classList.remove('open');}
+function copyShareUrl(){
+  const input=document.getElementById('share-url-input');
+  input.select();
+  try{
+    navigator.clipboard.writeText(input.value).then(()=>{
+      document.getElementById('share-msg').textContent='✓ Link copied to clipboard!';
+    }).catch(()=>{document.execCommand('copy');document.getElementById('share-msg').textContent='✓ Link copied!';});
+  }catch(e){document.execCommand('copy');document.getElementById('share-msg').textContent='✓ Link copied!';}
+}
+
+/* ══ CHART VIEW SWITCH ══ */
+function switchView(v){['growth','drawdown','cpf'].forEach(t=>{document.getElementById('view-'+t).style.display=t===v?'block':'none';const b=document.getElementById('vtab-'+t);if(t===v)b.classList.add('on');else b.classList.remove('on');});}
+
+/* ══ DARK MODE TOGGLE ══ */
+function toggleDark(){
+  const html=document.documentElement;
+  const isDark=html.getAttribute('data-theme')==='dark';
+  const next=isDark?'light':'dark';
+  html.setAttribute('data-theme',next);
+  document.getElementById('dm-btn').textContent=next==='dark'?'☀️':'🌙';
+  try{localStorage.setItem('sg_ret_theme',next);}catch(e){}
+}
+function applyTheme(){
+  try{
+    const saved=localStorage.getItem('sg_ret_theme');
+    const prefersDark=window.matchMedia('(prefers-color-scheme:dark)').matches;
+    const theme=saved||(prefersDark?'dark':'light');
+    if(theme==='dark'){
+      document.documentElement.setAttribute('data-theme','dark');
+      const btn=document.getElementById('dm-btn');
+      if(btn)btn.textContent='☀️';
+    }
+  }catch(e){}
+}
+
+/* ══ INIT ══ */
+(function(){
+  applyTheme();
+
+  // Priority: URL hash > localStorage > defaults
+  const loadedFromUrl=loadFromUrl();
+  if(!loadedFromUrl)loadState();
+
+  restoreSections();applySliders();
+  setActive('btn-single',mode==='single');setActive('btn-couple',mode==='couple');
+  setActive('btn-combined',finMode==='combined');setActive('btn-separate',finMode==='separate');
+  document.getElementById('hh-mode-wrap').style.display=mode==='couple'?'block':'none';
+  document.getElementById('ptabs-outer').style.display=mode==='couple'?'block':'none';
+  setActive('ptab-0',activePerson===0);setActive('ptab-1',activePerson===1);
+  buildPersonInputs();buildHH();compute();
+
+  // Close modals on overlay click
+  ['import-modal','share-modal','changelog-modal'].forEach(id=>{
+    document.getElementById(id).addEventListener('click',function(e){if(e.target===this)this.classList.remove('open');});
+  });
+
+  // Show changelog on first visit to a new version
+  try{
+    const lastSeen=localStorage.getItem('sg_ret_last_version');
+    if(lastSeen && lastSeen!==VERSION){
+      const banner=document.getElementById('update-banner');
+      const txt=document.getElementById('update-text');
+      if(banner&&txt&&banner.style.display==='none'){
+        txt.textContent=`Updated to v${VERSION} — see what's new.`;
+        banner.style.display='flex';
+      }
+    }
+    localStorage.setItem('sg_ret_last_version',VERSION);
+  }catch(e){}
+})();
+</script>
+</body>
+</html>
