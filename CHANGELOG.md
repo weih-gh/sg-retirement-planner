@@ -9,6 +9,53 @@ Versioning follows [Semantic Versioning](https://semver.org/):
 
 ---
 
+## [1.1.0] — 2026-05-25
+
+### Added
+- **Net worth over a lifetime chart** (Results section) — median Monte Carlo trajectory of investable portfolio + CPF (excl. MA) with a dashed retirement-age marker and horizontal FIRE-target reference line. Updates with debounced 400-trial MC.
+- **Glidepath portfolio strategy** with three named modes: **Hold steady** (flat allocation), **De-risk** (configurable P2 / P3 equity reductions), **Custom per phase**. Replaces the implicit auto-glidepath that previously activated in Simple mode.
+- **Lifetime chart info tooltip** explaining methodology (median of 400 MC trials).
+- **CPF FRS / ERS at 55 milestones** — projected RA at 55 vs FRS/ERS escalated to year-of-55, with binary "Will be achieved / Not achieved" status. Previously compared today's combined CPF (including MA) to today's FRS, which silently double-counted MA and ignored escalation.
+- **Footer** with version, MIT licence link, GitHub source link, and disclaimer.
+- **Update-available banner** — on load, fetches `version.json` from the deployed site and surfaces a dismissible refresh notice when the bundled VERSION is stale.
+- **Cache-Control meta tag** (1-hour TTL) so the HTML file picks up updates promptly.
+- **`data/` folder** with the five historical-data CSVs (`assetClasses.csv`, `series.csv`, `usLongSeries.csv`, `cpiUS.csv`, `cpiSG.csv`) and a README documenting schemas + source provenance.
+- **`version.json`** at repo root drives the update banner.
+- **MIT LICENSE** file.
+
+### Changed
+- **FIRE status banner** redesigned. Two-card layout when both partners on track (single "You're on track for Financial Independence — $X surplus"), per-person rows when statuses differ. Surplus / shortfall shown as a right-aligned pill.
+- **FIRE Number status tile** filled green (matches the Age-locked reference card from the inspiration screenshot), SWR % removed from subtitle, status tiles centred horizontally instead of stretched.
+- **Safety Buffer card** — `<h3>` moved inside `.fire-card` so the title gets the compact uppercase styling that matches the Planner's FIRE Target card.
+- **Simulation SWR slider** moved out of the global simulation card layout and into the per-strategy lever block for strategies that actually consume it (Fixed Withdrawal %, Guyton-Klinger). Strategies that don't use it no longer carry the stale "Adjust the Simulation SWR above" footer.
+- **Data sources status row** repositioned to sit below the Monte Carlo fan chart instead of between mode info and strategy info.
+- **Years-to-FIRE tile** on the Deeper Dive tab now uses the YoY scan when buffer = 1.0× so it matches the Planner tab exactly; switches to the continuous-contribution closed-form only for buffer > 1.0× (matching the "work longer past fireAge" framing).
+- **Default portfolio allocations** zeroed out — new users start with empty allocations instead of an opinionated 60/40 default.
+- **Definitions tab** — CPF extra interest description rewritten to match the actual implementation (was wrongly listing "+1% / +0.5%" tiers).
+- **Header tab order** preserved; methodology pages re-organised with Investing first, clickable section headers, and renamed "FIRE / LeanFIRE / FatFIRE" → "FIRE Definitions".
+- **N1 / N2 / N3** renamed to **P1 / P2 / P3** for visual consistency with the rest of the UI.
+- **CPF breakdown table** gained an OA Withdrawals column (housing payments via OA, with shortfall tracking when OA depletes mid-mortgage).
+- **Housing & Mortgage section** moved above Household Expenses for a more intuitive input order.
+- **Expenses card** banner — "Exclude housing if paid via CPF OA" callout when the housing-via-CPF toggle is on, with live-patched payment amount.
+- **Income card** AW (Additional Wages) routed correctly into monthly contributions; OW ceiling derived dynamically from the latest published year so future ceilings auto-flow without code changes.
+
+### Fixed
+- **Post-65 RA depletion** — previously held the RA balance flat at `raAt65` for the rest of life (CPF LIFE income appeared from nowhere). Now correctly subtracts `cpfLifeAnnual` from RA each year from age 65 onward, with no interest credit on the residual balance (matches the actual policy where post-65 interest goes to the risk pool).
+- **OA double-count at age 55** — `oaAt55` was captured but `state.oa` was never zeroed, so the post-55 auto-transfer logic re-injected the same balance (plus interest) back into the portfolio. Net worth was overstated by approximately one `oaAt55` for ages 55+.
+- **Mortgage-via-CPF shortfall** — when OA depleted before the mortgage tenure ended (or post-65 when CPF tracking stops), the engine silently stopped deducting the mortgage instead of routing the unpaid portion to cash expenses. Now correctly adds the deflated nominal shortfall back to yearly expenses for the affected years.
+- **Mortgage tenure honored in CPF engine** — OA was previously debited for the housing payment through age 65 regardless of remaining tenure. Capped to actual remaining tenure, with the post-55 auto-transfer no longer reserving a housing buffer once the mortgage is paid off.
+- **Combined-couple FIRE banner** read different `m.projected` values than the Portfolio at Retirement tile, leading to "$828k surplus" in the banner but "$588k above target" in the tile for the same scenario. Both now derive from the YoY single source of truth.
+- **Retirement horizon display** showed total years from currentAge (including accumulation) instead of retirement-only years (`lifeExp − fireAge + 1`).
+- **`renderResults` couple modes** — separate-couple branch now also renders the lifetime chart.
+- **Mobile responsiveness** — status tile grid, hero action buttons, share/export overflow, info tooltip tap-to-toggle, iOS-16px input zoom fix.
+
+### Developer
+- **`DATA_SOURCES.repo`** populated to `weih-gh/sg-retirement-planner` so the DataLoader fetches CSVs from this repo's `data/` folder by default. Embedded copies in `index.html` remain as offline fallback.
+- **`VERSION` constant** drives the header pill, footer text, and update-banner comparison.
+- **`CONTRIBUTING.md`** added with release workflow and state-migration playbook.
+
+---
+
 ## [1.0.0] — 2026-04-27 🎉 Initial release
 
 ### Core planner

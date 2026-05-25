@@ -1,0 +1,7 @@
+key,label,realReturn,stdDev,category
+usEquity,US Equities,0.065,0.165,equity
+intlEquity,Intl Equities (ex-US),0.045,0.175,equity
+intlBonds,Intl Bonds,0.015,0.075,bond
+sgEquity,SG Equities (STI),0.04,0.185,equity
+commodities,Commodities,0,0.195,alt
+cash,Cash / Short-term,-0.005,0.02,cash

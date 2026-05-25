@@ -1,0 +1,32 @@
+# Enforce LF line endings for all text files, regardless of contributor's OS.
+# Prevents Windows / Mac / Linux line-ending churn in diffs.
+
+# Default: auto-detect text vs binary, normalise text to LF in the repo
+* text=auto eol=lf
+
+# Source / config / docs — explicit text + LF
+*.html       text eol=lf
+*.css        text eol=lf
+*.js         text eol=lf
+*.json       text eol=lf
+*.md         text eol=lf
+*.csv        text eol=lf
+*.txt        text eol=lf
+*.yml        text eol=lf
+*.yaml       text eol=lf
+.gitignore   text eol=lf
+.gitattributes text eol=lf
+LICENSE      text eol=lf
+
+# Binary files — never normalise / diff as text
+*.png        binary
+*.jpg        binary
+*.jpeg       binary
+*.gif        binary
+*.ico        binary
+*.svg        binary
+*.zip        binary
+*.pdf        binary
+*.woff       binary
+*.woff2      binary
+*.ttf        binary
