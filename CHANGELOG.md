@@ -9,6 +9,18 @@ Versioning follows [Semantic Versioning](https://semver.org/):
 
 ---
 
+## [1.1.1] — 2026-05-25
+
+### Changed
+- **Share-link compression**: URL hashes now use LZ-string (≈70% smaller than the previous base64 encoding). A realistic couple-mode + Separate-finances + Advanced-allocation plan fits comfortably under the ~2,000-char limit that some email clients and chat apps truncate at. New compressed format uses the `#s2=` hash prefix.
+- **Backward compatible**: existing `#s=` share links from v1.0.0 / v1.1.0 continue to work indefinitely — the decoder tries the new compressed format first, then falls back to the legacy base64 path. No action required from anyone holding an old shared URL.
+- **Graceful degradation**: if the LZ-string CDN fails to load (e.g. offline), the encoder falls back to legacy base64 so Share still produces a working (longer) URL.
+
+### Added
+- LZ-string library loaded from jsDelivr CDN (~3 KB, MIT-licensed, sync API).
+
+---
+
 ## [1.1.0] — 2026-05-25
 
 ### Added

@@ -11,6 +11,9 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&family=Manrope:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<!-- LZ-string for URL-hash compression (~3KB). MIT-licensed.
+     Used by Share to keep encoded plan URLs under email/chat truncation limits. -->
+<script src="https://cdn.jsdelivr.net/npm/lz-string@1.5.0/libs/lz-string.min.js"></script>
 <style>
   :root {
     --bg: #F8F6ED;
@@ -1558,7 +1561,7 @@
 //   • Footer attribution
 //   • Update-available banner (compared against version.json fetched from the deployed site)
 // Keep in sync with version.json at the repo root.
-const VERSION = "1.1.0";
+const VERSION = "1.1.1";
 
 const DATA_SOURCES = {
   repo: "weih-gh/sg-retirement-planner",
@@ -3473,19 +3476,44 @@ const Storage = {
 function updateUrlHash() {
   try {
     const json = JSON.stringify(STATE);
-    const encoded = btoa(unescape(encodeURIComponent(json)));
-    history.replaceState(null, "", "#s=" + encoded);
+    // LZ-string compression keeps share URLs short enough to survive email /
+    // chat truncation (~2,000-char limit). Typical reduction is 65–80% vs the
+    // legacy base64 path. `compressToEncodedURIComponent` produces URL-safe
+    // output directly — no extra base64 step needed.
+    // New prefix `#s2=` differentiates from the legacy `#s=` so older shared
+    // links keep working via the backward-compat decoder below.
+    const encoded = (typeof LZString !== "undefined" && LZString.compressToEncodedURIComponent)
+      ? LZString.compressToEncodedURIComponent(json)
+      : null;
+    if (encoded) {
+      history.replaceState(null, "", "#s2=" + encoded);
+    } else {
+      // Library didn't load (e.g. offline / CDN blocked) — fall back to legacy encoding.
+      history.replaceState(null, "", "#s=" + btoa(unescape(encodeURIComponent(json))));
+    }
   } catch (e) { /* ignore */ }
 }
 
 function loadFromUrlHash() {
   if (!window.location.hash) return null;
-  const m = window.location.hash.match(/^#s=(.+)$/);
-  if (!m) return null;
-  try {
-    const json = decodeURIComponent(escape(atob(m[1])));
-    return JSON.parse(json);
-  } catch { return null; }
+  // Try the new compressed format first (v1.1.1+).
+  let m = window.location.hash.match(/^#s2=(.+)$/);
+  if (m && typeof LZString !== "undefined" && LZString.decompressFromEncodedURIComponent) {
+    try {
+      const json = LZString.decompressFromEncodedURIComponent(m[1]);
+      if (json) return JSON.parse(json);
+    } catch { /* fall through to legacy attempt */ }
+  }
+  // Legacy uncompressed format (v1.0.0 / v1.1.0 share links) — kept indefinitely
+  // for backward compatibility with previously shared URLs.
+  m = window.location.hash.match(/^#s=(.+)$/);
+  if (m) {
+    try {
+      const json = decodeURIComponent(escape(atob(m[1])));
+      return JSON.parse(json);
+    } catch { return null; }
+  }
+  return null;
 }
 
 /* ════════════════════════════════════════════════════════════════════════
