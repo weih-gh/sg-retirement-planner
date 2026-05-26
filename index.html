@@ -282,9 +282,11 @@
 
   /* ── Person tabs ──────────────────────────────────────────── */
   .person-tabs {
+    /* Sits inside the Profile & Income section body — tighter top margin
+       than when it lived at top-of-page. */
     display: flex; gap: 28px;
     border-bottom: 1px solid var(--border);
-    margin: 28px 0 24px;
+    margin: 0 0 16px;
   }
   .person-tabs button {
     background: none; border: none; padding: 10px 0;
@@ -348,7 +350,11 @@
   }
   .def-sidebar a:hover { color: var(--text); background: var(--panel-2); }
   .def-sidebar a.active { color: var(--accent); border-left-color: var(--accent); font-weight: 600; }
-  .def-content > .card { scroll-margin-top: 20px; margin-bottom: 20px; }
+  /* Prevent the content grid track from inflating to fit oversized children
+     (long formulas, wide kv terms) — otherwise the page horizontally scrolls
+     on mobile. */
+  .def-content { min-width: 0; }
+  .def-content > .card { scroll-margin-top: 20px; margin-bottom: 20px; min-width: 0; }
   .def-section-heading {
     font-size: 11px; font-weight: 700; color: var(--muted);
     text-transform: uppercase; letter-spacing: 0.14em;
@@ -374,7 +380,10 @@
     display: block; padding: 12px 14px; margin: 10px 0;
     background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px;
     font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12px;
-    color: var(--text); line-height: 1.6; overflow-x: auto;
+    color: var(--text); line-height: 1.6;
+    /* Cap to parent width so long formulas use their inner scrollbar instead
+       of pushing the layout. Works because parent now has min-width: 0. */
+    max-width: 100%; overflow-x: auto;
     white-space: pre;
   }
   .def-content .def-example {
@@ -1347,6 +1356,17 @@
     .def-sidebar { gap: 0; font-size: 13px; padding: 4px 0; margin-bottom: 16px; }
     .def-sidebar a { padding: 8px 12px; }     /* widen tap target */
     .def-section-heading { font-size: 12px; }
+    /* Stack term/definition vertically on mobile — drops the max-content
+       column that was inflating layout, and is more readable on narrow widths. */
+    .def-content .def-kv {
+      grid-template-columns: 1fr;
+      gap: 2px 0;
+      margin: 12px 0;
+    }
+    .def-content .def-kv > dt { margin-top: 8px; font-size: 12px; }
+    .def-content .def-kv > dd { margin-bottom: 4px; }
+    .def-content .def-formula { font-size: 11px; padding: 10px 12px; }
+    .def-content p, .def-content ul { font-size: 13px; }
 
     /* ── Strategy levers: wrap with full-width inputs on narrow screens ── */
     .strategy-lever input { width: 100%; }
@@ -1448,10 +1468,10 @@
     <!-- Planning for / Household finances toggles -->
     <div id="config-block-host"></div>
 
-    <!-- Person tabs (visible only when couple) -->
-    <div id="person-tabs-host"></div>
-
-    <!-- Section groups -->
+    <!-- Section groups. The You / Partner tabs (couple mode only) are rendered
+         INSIDE the Profile & Income section body by renderProfileIncome so
+         their scope is visually unambiguous — toggling clearly changes the
+         fields immediately below. -->
     <div id="section-profile-income" class="section-group">
       <div class="head" onclick="toggleSection('section-profile-income')"><span class="caret">▼</span> Profile &amp; income</div>
       <div class="body" id="section-profile-income-body"></div>
@@ -1561,7 +1581,7 @@
 //   • Footer attribution
 //   • Update-available banner (compared against version.json fetched from the deployed site)
 // Keep in sync with version.json at the repo root.
-const VERSION = "1.1.1";
+const VERSION = "1.1.2";
 
 const DATA_SOURCES = {
   repo: "weih-gh/sg-retirement-planner",
@@ -3701,9 +3721,9 @@ function renderConfigBlocks() {
         <div class="label">Planning for</div>
         <div class="toggle-group">
           <button class="${!couple ? "active" : ""}"
-                  onclick="setStructural('profile.coupleMode', false, renderConfigBlocks, renderPersonTabs, renderProfileIncome, renderExpenses, renderPortfolio)">Just me</button>
+                  onclick="setStructural('profile.coupleMode', false, renderConfigBlocks, renderProfileIncome, renderPersonTabs, renderExpenses, renderPortfolio)">Just me</button>
           <button class="${couple ? "active" : ""}"
-                  onclick="setStructural('profile.coupleMode', true, renderConfigBlocks, renderPersonTabs, renderProfileIncome, renderExpenses, renderPortfolio)">Me &amp; my partner</button>
+                  onclick="setStructural('profile.coupleMode', true, renderConfigBlocks, renderProfileIncome, renderPersonTabs, renderExpenses, renderPortfolio)">Me &amp; my partner</button>
         </div>
       </div>
       ${couple ? `
@@ -3721,18 +3741,20 @@ function renderConfigBlocks() {
 }
 
 function renderPersonTabs() {
+  // The host lives inside renderProfileIncome's body output (couple mode only).
+  // Guarded for safety when called before renderProfileIncome has run, or in
+  // single mode where no host placeholder is rendered.
+  const host = document.getElementById("person-tabs-host");
+  if (!host) return;
   const couple = STATE.profile.coupleMode;
-  if (!couple) {
-    document.getElementById("person-tabs-host").innerHTML = "";
-    return;
-  }
+  if (!couple) { host.innerHTML = ""; return; }
   const active = STATE.ui.activePersonTab;
-  document.getElementById("person-tabs-host").innerHTML = `
+  host.innerHTML = `
     <div class="person-tabs">
       <button class="${active === "p1" ? "active" : ""}"
-              onclick="setStructural('ui.activePersonTab', 'p1', renderPersonTabs, renderProfileIncome, renderExpenses, renderPortfolio)">${STATE.profile.person1.name}</button>
+              onclick="setStructural('ui.activePersonTab', 'p1', renderProfileIncome, renderPersonTabs, renderExpenses, renderPortfolio)">${STATE.profile.person1.name}</button>
       <button class="${active === "p2" ? "active" : ""}"
-              onclick="setStructural('ui.activePersonTab', 'p2', renderPersonTabs, renderProfileIncome, renderExpenses, renderPortfolio)">${STATE.profile.person2.name}</button>
+              onclick="setStructural('ui.activePersonTab', 'p2', renderProfileIncome, renderPersonTabs, renderExpenses, renderPortfolio)">${STATE.profile.person2.name}</button>
     </div>
   `;
 }
@@ -3748,8 +3770,10 @@ function renderProfileIncome() {
   const pk = activePersonKey();          // "p1" | "p2"
   const prof = activeProfileKey();        // "person1" | "person2"
   const name = STATE.profile[prof].name;
+  const couple = STATE.profile.coupleMode;
 
   document.getElementById("section-profile-income-body").innerHTML = `
+    ${couple ? `<div id="person-tabs-host"></div>` : ""}
     <div class="card">
       <h3>${name} — Profile &amp; income</h3>
       <div class="row cols-3">
@@ -7360,8 +7384,8 @@ function renderDefinitions() {
       <a href="#m-oa-transfer">OA auto-transfer math</a>
       <a href="#m-real-nominal">Real ↔ Nominal conversion</a>
       <a href="#m-blend">Portfolio blending</a>
-      <a href="#m-glidepath">Simple-mode glidepath</a>
-      <a href="#m-strategies">Withdrawal strategies (6)</a>
+      <a href="#m-glidepath">Glidepath</a>
+      <a href="#m-strategies">Withdrawal strategies (7)</a>
       <a href="#m-sim-modes">Simulation modes (4)</a>
       <a href="#m-inflation">Inflation handling</a>
       <a href="#m-mortgage">Mortgage amortization</a>
@@ -7417,13 +7441,16 @@ function renderDefinitions() {
 
       <div class="card" id="def-glidepath">
         <h3>Glidepath</h3>
-        <p>A pre-defined shift in asset allocation as you age. The traditional "120 minus your age" rule for equity weight is a glidepath. In this planner, Simple-mode glidepath shifts equity into bonds over the 4 phases:</p>
-        <ul>
-          <li><strong>Pre-FIRE &amp; Phase 1</strong>: full equity exposure (your chosen allocation).</li>
-          <li><strong>Phase 2 (55–64)</strong>: keep 75% of equity weight; shift 25% to bond/cash (80/20 split).</li>
-          <li><strong>Phase 3 (65+)</strong>: keep 55% of equity weight; shift 45% to bond/cash (85/15 split).</li>
-        </ul>
-        <p>Switch to <em>Advanced</em> allocation mode for per-phase manual control.</p>
+        <p>A pre-defined shift in asset allocation as you age. The traditional "120 minus your age" rule for equity weight is a glidepath. In this planner, the Portfolio Allocation card offers three named strategies:</p>
+        <dl class="def-kv">
+          <dt>Hold steady</dt>
+          <dd>One allocation held constant across all four phases (Pre-FIRE, P1, P2, P3). No glidepath. Default for new users.</dd>
+          <dt>De-risk (glidepath)</dt>
+          <dd>One allocation, automatically de-risked in Phases 2 (55–64) and 3 (65+) via two slider controls: <strong>P2 equity reduction</strong> and <strong>P3 equity reduction</strong>. Reduced equity weight flows into bonds and (a small slice) cash, preserving the user's intra-category ratios. Default reductions: 25% in P2, 45% in P3.</dd>
+          <dt>Custom per phase</dt>
+          <dd>Four independent allocations — set each phase's weights manually. Maximum flexibility for tuning a specific glidepath shape.</dd>
+        </dl>
+        <p>The glidepath is purely a de-risking convenience — the underlying engine treats all four phases as independent allocations.</p>
       </div>
 
       <div class="def-section-heading" id="section-cpf">CPF</div>
@@ -7502,7 +7529,7 @@ function renderDefinitions() {
           <dt>MA top-ups</dt>
           <dd>Voluntary cash into MediSave. Tax relief up to BHS cap. Useful pre-55 since SA closes at 55.</dd>
         </dl>
-        <p>These fields aren't exposed in the planner UI — they roll into the standard CPF projection if the user chooses to model them.</p>
+        <p>Voluntary top-up amounts default to $0 in the planner state. When the field is non-zero (settable via JSON Import), the engine adds the monthly amount to SA (pre-55) or RA (≥ 55), and the planner displays a tax-relief estimate next to the relevant CPF input.</p>
       </div>
 
       <div class="card" id="def-oa-transfer">
@@ -7543,7 +7570,9 @@ factor (Standard) = 0.00539  →  ~6.47%/yr of RA@65
 factor (Basic)    = 0.00485  →  ~5.82%/yr of RA@65</pre>
         <div class="def-example">RA at 65 = $330,100 (FRS escalated 10 years) → Standard monthly ≈ <strong>$1,780</strong>.</div>
         <p>Factors derived from CPF Board's published annuity tables. The planner uses these as a constant; actual figures vary slightly with cohort interest assumptions.</p>
-        <span class="def-srcref">CPF.calcCpfLifePayout</span>
+        <p><strong>Post-65 RA depletion:</strong> the year-by-year projection decrements RA by the annual payout each year from 65 onward, with <em>no interest credit</em> on the remaining balance — modelling the fact that interest accrued post-65 flows into the CPF LIFE risk pool, not back to the member's account. RA hits zero around age (65 + RA@65 / annualPayout), at which point the YoY chart's CPF line bottoms out. CPF LIFE continues paying for life regardless (insurance pooling); the chart just stops showing a personal-RA balance to draw down.</p>
+        <pre class="def-formula">runningRa(year N>65) = max(0, runningRa(year N-1) − cpfLifeAnnual)</pre>
+        <span class="def-srcref">CPF.calcCpfLifePayout · computeYearlyProjection (runningRa1Post65 / runningRa2Post65)</span>
       </div>
 
       <div class="card" id="m-oa-transfer">
@@ -7577,32 +7606,42 @@ stdDev   = √variance</pre>
       </div>
 
       <div class="card" id="m-glidepath">
-        <h3>Simple-mode glidepath</h3>
+        <h3>Glidepath strategy</h3>
         <div class="def-card-sub">Methodology</div>
-        <p>The user's "simple" weights are the source of truth. Pre-FIRE and Phase 1 use them verbatim. Phase 2 and 3 apply a category-based shift:</p>
+        <p>Used when the user picks <strong>De-risk (glidepath)</strong> in the Portfolio Allocation card. The user's base weights are the source of truth: Pre-FIRE and Phase 1 use them verbatim. Phase 2 and 3 apply a category-based shift driven by two user-tunable sliders (default 25% / 45% equity reduction):</p>
         <pre class="def-formula">For each phase:
+  eqFactor = 1 − userEquityReduction      (user-tunable per phase)
   remove   = byCat.equity × (1 − eqFactor)
   newEq    = byCat.equity × eqFactor
   newBond  = byCat.bond  + remove × bondShift
   newCash  = byCat.cash  + remove × cashShift
   newAlt   = byCat.alt   (unchanged)
 
-Phase 2 (55–64): eqFactor = 0.75, bondShift = 0.80, cashShift = 0.20
-Phase 3 (65+):   eqFactor = 0.55, bondShift = 0.85, cashShift = 0.15</pre>
-        <p>Within each category, the user's intra-category ratios are preserved (e.g. if usEquity:intlEquity = 2:1 in simple, that ratio carries through every phase).</p>
-        <span class="def-srcref">Portfolio.expandSimpleToPhases</span>
+Phase 2 (55–64): bondShift = 0.80, cashShift = 0.20   (eqFactor from p2EquityReduction slider)
+Phase 3 (65+):   bondShift = 0.85, cashShift = 0.15   (eqFactor from p3EquityReduction slider)</pre>
+        <p>Within each category, the user's intra-category ratios are preserved (e.g. if usEquity:intlEquity = 2:1 in the base allocation, that ratio carries through every phase). The bond/cash split is held constant — only the equity reduction is user-tunable.</p>
+        <p>If the user instead picks <strong>Hold steady</strong>, all four phases inherit the base weights verbatim (no glidepath shift applied).</p>
+        <span class="def-srcref">Portfolio.expandSimpleToPhases / Portfolio.expandSimpleToPhasesFlat</span>
       </div>
 
       <div class="card" id="m-strategies">
-        <h3>Withdrawal strategies</h3>
+        <h3>Withdrawal strategies (7)</h3>
         <div class="def-card-sub">Methodology</div>
         <dl class="def-kv">
-          <dt>Fixed (SWR)</dt><dd>Constant <em>SWR × startingPortfolio</em>, inflation-adjusted. Simplest; baseline.</dd>
-          <dt>Guyton-Klinger</dt><dd>Withdrawal adjusts by ±10% based on portfolio vs initial value relative to inflation-adjusted floor/ceiling.</dd>
-          <dt>Bucket</dt><dd>Cash bucket funds 1–2 years of spending; refill from equity in good years, bonds in bad years.</dd>
-          <dt>Rising glidepath</dt><dd>Equity share increases through retirement (Pfau-Kitces 2014). Robust to early-sequence-of-returns risk.</dd>
-          <dt>CAPE-adjusted</dt><dd>Withdrawal = a + b × (1/CAPE). Lower in expensive markets, higher in cheap ones.</dd>
-          <dt>Floor &amp; upside</dt><dd>Guaranteed floor (annuity/CPF LIFE) plus discretionary upside withdrawals when portfolio outperforms.</dd>
+          <dt>Fixed Expenses (Inflation Adjusted)</dt>
+          <dd><strong>Default.</strong> Withdraw the user's planned annual retirement expense each year, held constant in real $ (inflation-adjusted automatically since the engine works in real terms). CPF LIFE and other retirement income offset the gross withdrawal need. Does not use the Simulation SWR slider.</dd>
+          <dt>Fixed Withdrawal % (SWR)</dt>
+          <dd>Trinity-study definition: <em>SWR × portfolio at retirement</em>, constant in real $ thereafter. Uses the Simulation SWR slider directly.</dd>
+          <dt>Guyton-Klinger Guardrails</dt>
+          <dd>Withdraw planned expenses; trim by <em>cutPct</em> when portfolio drifts &lt; <em>target − lower guardrail</em>, raise by <em>raisePct</em> when it drifts &gt; <em>target + upper guardrail</em>. Target = planned expenses ÷ Simulation SWR. Four tunable levers.</dd>
+          <dt>Bucket</dt>
+          <dd>Cash bucket funds 1–2 years of spending; trim withdrawal by 10% when portfolio approaches the buffer floor (5× buffer-years of expenses).</dd>
+          <dt>Rising Equity Glidepath</dt>
+          <dd>Front-loaded withdrawal cut that tapers to normal over the ramp years (Pfau-Kitces 2014). Mitigates early sequence-of-returns risk.</dd>
+          <dt>CAPE-Adjusted SWR</dt>
+          <dd>Withdrawal % = a + b/CAPE applied to portfolio. Lower withdrawals in expensive markets, higher in cheap ones. Manually set CAPE — no live feed.</dd>
+          <dt>Floor + Upside</dt>
+          <dd>Spend planned baseline (often CPF-LIFE-covered) plus a % of portfolio above a safety reserve.</dd>
         </dl>
         <span class="def-srcref">Strategies.apply</span>
       </div>
@@ -7668,8 +7707,10 @@ function recompute() {
 
 function renderAll() {
   renderConfigBlocks();
-  renderPersonTabs();
+  // renderProfileIncome must run BEFORE renderPersonTabs — the tabs' host
+  // (`#person-tabs-host`) is now emitted inside the Profile & Income body.
   renderProfileIncome();
+  renderPersonTabs();
   renderHousing();
   renderExpenses();
   renderPortfolio();

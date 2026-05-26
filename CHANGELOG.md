@@ -9,6 +9,20 @@ Versioning follows [Semantic Versioning](https://semver.org/):
 
 ---
 
+## [1.1.2] — 2026-05-26
+
+### Fixed
+- **Definitions & Methodology mobile responsiveness** — page no longer requires horizontal scrolling on phone widths. Added `min-width: 0` to `.def-content` so the grid track stops inflating to fit oversized children. Definition-list entries (`.def-kv`) now stack term-above-definition vertically on screens ≤ 700px. Formulas keep their inner horizontal scrollbar without pushing the page layout.
+
+### Changed
+- **Glidepath card** rewritten to reflect the three named Portfolio strategies (Hold steady / De-risk / Custom per phase). Removed stale references to "Simple mode" and "Advanced allocation mode" which no longer exist.
+- **Glidepath methodology** renamed from "Simple-mode glidepath" to "Glidepath strategy". Notes that `eqFactor` is now user-tunable via the P2 / P3 equity-reduction sliders (defaults 25% / 45%), rather than the previous hard-coded 0.75 / 0.55.
+- **Withdrawal Strategies methodology** expanded from 6 to 7 entries — adds the missing **Fixed Expenses (Inflation Adjusted)** strategy (the default) and splits it from **Fixed Withdrawal % (SWR)**. Each entry now also notes whether it uses the Simulation SWR.
+- **CPF LIFE payout methodology** now describes the post-65 RA depletion model (RA decrements by annual payout each year, no interest credit — matches the engine's `runningRa1Post65` logic added in v1.1.0).
+- **RSTU & MA top-ups card** updated — removed the inaccurate "not exposed in UI" claim. Voluntary top-up fields are wired through the state and tax-relief estimate displays when set.
+
+---
+
 ## [1.1.1] — 2026-05-25
 
 ### Changed
