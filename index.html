@@ -449,6 +449,24 @@
     font-size: 12px; margin-bottom: 0;
   }
   .banner.info { background: rgba(74, 124, 89, .08); color: var(--accent-2); border: 1px solid rgba(74, 124, 89, .22); }
+
+  /* Lightweight inline hint sitting under the expense-input row — reminds
+     the user to exclude the mortgage from expenses when paid via CPF OA.
+     Uses the same SVG icon shape as `_infoIcon()` for visual consistency
+     with other info buttons in the app. */
+  .expense-cpf-hint {
+    margin-top: 10px;
+    font-size: 12px;
+    color: var(--muted);
+    line-height: 1.5;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .expense-cpf-hint svg {
+    flex-shrink: 0;
+    color: var(--accent-2);
+  }
   .banner.warn { background: rgba(146, 88, 12, .08); color: var(--warn); border: 1px solid rgba(146, 88, 12, .25); }
 
   /* ── Fields ───────────────────────────────────────────────── */
@@ -1581,7 +1599,7 @@
 //   • Footer attribution
 //   • Update-available banner (compared against version.json fetched from the deployed site)
 // Keep in sync with version.json at the repo root.
-const VERSION = "1.1.2";
+const VERSION = "1.4.2";
 
 const DATA_SOURCES = {
   repo: "weih-gh/sg-retirement-planner",
@@ -2495,35 +2513,65 @@ const FIRE = (() => {
   // r treated as NOMINAL portfolio return (PRD "real return" label is incorrect
   // — formula only sums consistently when r is nominal).
   function calculateMultiPhaseTarget(inputs) {
-    const { E, i, r, P_LIFE = 0, W_OA = 0, FIRE_AGE, LIFE_EXP } = inputs;
+    const {
+      E, i, r, P_LIFE = 0, W_OA = 0, FIRE_AGE, LIFE_EXP,
+      // v1.3.1: cash portion of mortgage paid out of portfolio during retirement.
+      // Fixed nominal payment (no inflation indexing). Active for the first
+      // `mortgageActiveYearsFromFire` years post-FIRE, then drops to zero.
+      cashMortgageAnnual = 0,
+      mortgageActiveYearsFromFire = 0,
+      // v1.4.0: optional per-phase expense overrides (today's $). When provided,
+      // each phase's PV uses its own baseline expense (still inflated per year
+      // within the phase) instead of the single `E`. Defaults to `E` so callers
+      // that don't care about per-phase get identical results to v1.3.x.
+      E_p1 = E, E_p2 = E, E_p3 = E,
+    } = inputs;
     const Y1 = Math.max(0, 55 - FIRE_AGE);
     const Y2 = (FIRE_AGE >= 65) ? 0 : 10;
     const Y3 = Math.max(0, LIFE_EXP - 65);
 
+    // PV at FIRE of the cash mortgage stream over years [yearStart, yearEnd) post-FIRE.
+    // Nominal fixed payment, discounted with nominal r.
+    const pvMortgageAtFire = (yearStart, yearEnd) => {
+      if (cashMortgageAnnual <= 0 || mortgageActiveYearsFromFire <= 0) return 0;
+      const lo = Math.max(0, yearStart);
+      const hi = Math.min(mortgageActiveYearsFromFire, yearEnd);
+      if (hi <= lo) return 0;
+      let sum = 0;
+      for (let t = lo; t < hi; t++) sum += cashMortgageAnnual / Math.pow(1 + r, t);
+      return sum;
+    };
+
     let n1 = 0;
-    for (let t = 0; t < Y1; t++) n1 += E * Math.pow(1 + i, t) / Math.pow(1 + r, t);
+    for (let t = 0; t < Y1; t++) n1 += E_p1 * Math.pow(1 + i, t) / Math.pow(1 + r, t);
+    n1 += pvMortgageAtFire(0, Y1);
 
     let n2 = 0;
     if (Y2 > 0) {
-      const E55 = E * Math.pow(1 + i, Y1);
+      const E55 = E_p2 * Math.pow(1 + i, Y1);
       let phase2PvAt55 = 0;
       for (let t = 0; t < Y2; t++) phase2PvAt55 += E55 * Math.pow(1 + i, t) / Math.pow(1 + r, t);
       phase2PvAt55 -= W_OA;
       n2 = Math.max(0, phase2PvAt55) / Math.pow(1 + r, Y1);
     }
+    // Cash mortgage in P2 sits outside the Math.max — it's a real outflow that
+    // OA lump can't cancel (OA is already netted against expenses, not mortgage).
+    n2 += pvMortgageAtFire(Y1, Y1 + Y2);
 
     let n3 = 0, phase3PvAt65 = 0;
     if (Y3 > 0) {
-      const E65 = E * Math.pow(1 + i, Y1 + Y2);
+      const E65 = E_p3 * Math.pow(1 + i, Y1 + Y2);
       for (let t = 0; t < Y3; t++) {
         const expT = E65 * Math.pow(1 + i, t);
         phase3PvAt65 += Math.max(0, expT - P_LIFE) / Math.pow(1 + r, t);
       }
       n3 = phase3PvAt65 / Math.pow(1 + r, Y1 + Y2);
     }
+    n3 += pvMortgageAtFire(Y1 + Y2, Y1 + Y2 + Y3);
 
     return { n1, n2, n3, total: n1 + n2 + n3,
-             assumptions: { E, i, r, P_LIFE, W_OA, FIRE_AGE, LIFE_EXP, Y1, Y2, Y3 } };
+             assumptions: { E, E_p1, E_p2, E_p3, i, r, P_LIFE, W_OA, FIRE_AGE, LIFE_EXP, Y1, Y2, Y3,
+                            cashMortgageAnnual, mortgageActiveYearsFromFire } };
   }
 
   function calcPlanHorizon(profile) {
@@ -2719,10 +2767,24 @@ const Portfolio = (() => {
       phaseReturns, oaLumpAt55, oaTransfersByAge, cpfLifeAnnual, otherIncomeAnnual,
       trials = 1000, strategyKey = "fixed", sampleCount = 50,
       strategyParams = {},
+      // v1.3.1: cash mortgage debited from portfolio during retirement, fixed
+      // nominal, active for the first `mortgageActiveYearsFromFire` years post-FIRE.
+      cashMortgageAnnual = 0,
+      mortgageActiveYearsFromFire = 0,
+      // v1.3.2: pre-FIRE — `annualContribution` is net of current cash mortgage,
+      // so we ADD IT BACK for accumulation years AFTER the mortgage ends.
+      mortgageActivePreFireYears = 0,
+      // v1.4.0: per-phase expense profile (today's $). When provided, the
+      // per-year base withdrawal switches across phases at 55 (P1→P2) and 65
+      // (P2→P3). When absent, falls back to constant `annualExpense` (v1.3.x).
+      expenseProfile = null,
     } = ctx;
 
     // Per-year withdrawal in real dollars (today's $)
-    const baseWithdrawal = annualExpense; // strategy may adjust
+    // v1.4.0: if a per-phase profile is given, look up by age each year.
+    const baseFor = (age) => expenseProfile
+      ? (age < 55 ? expenseProfile.p1 : age < 65 ? expenseProfile.p2 : expenseProfile.p3)
+      : annualExpense;
 
     // Lifecycle spans from currentAge (or fireAge if already retired) through lifeExp.
     // Pre-FIRE years apply contributions + stochastic pre-FIRE returns, no withdrawals.
@@ -2754,7 +2816,14 @@ const Portfolio = (() => {
 
         // ── Accumulation phase (pre-FIRE) ─────────────────────────
         if (age < fireAge) {
-          portfolio += annualContribution;
+          // After the cash mortgage ends, the user reclaims that monthly cash
+          // flow and can invest it. `annualContribution` is today's net rate
+          // (already deducting cash mortgage); add it back once tenure is up.
+          const yearsSinceStart = y;
+          const mortgageEnded = yearsSinceStart >= mortgageActivePreFireYears;
+          const contribThisYear = annualContribution
+            + (mortgageEnded && cashMortgageAnnual > 0 ? cashMortgageAnnual : 0);
+          portfolio += contribThisYear;
           const r = phaseR.mean + phaseR.stdDev * gauss();
           portfolio *= (1 + r);
           continue;
@@ -2770,11 +2839,16 @@ const Portfolio = (() => {
         // Compute net withdrawal need (after CPF LIFE + other income offset from age 65)
         const offset = age >= 65 ? (cpfLifeAnnual + otherIncomeAnnual) : otherIncomeAnnual;
         const grossNeed = Strategies.apply(strategyKey, {
-          baseWithdrawal, swr, year: y - (fireAge - startAge), age, portfolio,
+          baseWithdrawal: baseFor(age), swr, year: y - (fireAge - startAge), age, portfolio,
           startingPortfolio: portfolioAtFireStart,
           params: strategyParams,
         });
-        const netWithdraw = Math.max(0, grossNeed - offset);
+        // Add cash mortgage burden (fixed nominal) while loan is still active.
+        // yearsSinceFire indexes from 0 at FIRE; mortgage stops after N years.
+        const yearsSinceFire = age - fireAge;
+        const mortgageDue = (cashMortgageAnnual > 0 && yearsSinceFire < mortgageActiveYearsFromFire)
+          ? cashMortgageAnnual : 0;
+        const netWithdraw = Math.max(0, grossNeed - offset) + mortgageDue;
 
         // Withdraw first
         portfolio -= netWithdraw;
@@ -2850,7 +2924,17 @@ const Portfolio = (() => {
       allocations, oaLumpAt55, oaTransfersByAge, cpfLifeAnnual, otherIncomeAnnual,
       strategyKey = "fixed", series, cpiSeries, startAge,
       strategyParams = {},
+      // v1.3.1: cash mortgage debited from portfolio during retirement.
+      cashMortgageAnnual = 0,
+      mortgageActiveYearsFromFire = 0,
+      // v1.3.2: pre-FIRE — add back cash mortgage after the loan ends.
+      mortgageActivePreFireYears = 0,
+      // v1.4.0: per-phase expense profile (today's $)
+      expenseProfile = null,
     } = ctx;
+    const baseFor = (age) => expenseProfile
+      ? (age < 55 ? expenseProfile.p1 : age < 65 ? expenseProfile.p2 : expenseProfile.p3)
+      : annualExpense;
     const yearsCount = yearSequence.length;
     let portfolio = startingPortfolio;
     let portfolioAtFireStart = null;  // captured per trial when retirement begins
@@ -2872,7 +2956,12 @@ const Portfolio = (() => {
       const r = getHistoricalRealReturn(series, cpiSeries, yearSequence[y], phaseWeights);
 
       if (age < fireAge) {
-        portfolio += annualContribution;
+        // v1.3.2: add back cash mortgage after the loan ends in accumulation.
+        const yearsSinceStart = y;
+        const mortgageEnded = yearsSinceStart >= mortgageActivePreFireYears;
+        const contribThisYear = annualContribution
+          + (mortgageEnded && cashMortgageAnnual > 0 ? cashMortgageAnnual : 0);
+        portfolio += contribThisYear;
         portfolio *= (1 + r);
         continue;
       }
@@ -2884,11 +2973,15 @@ const Portfolio = (() => {
 
       const offset = age >= 65 ? (cpfLifeAnnual + otherIncomeAnnual) : otherIncomeAnnual;
       const grossNeed = Strategies.apply(strategyKey, {
-        baseWithdrawal: annualExpense, swr, year: y - (fireAge - startAge), age, portfolio,
+        baseWithdrawal: baseFor(age), swr, year: y - (fireAge - startAge), age, portfolio,
         startingPortfolio: portfolioAtFireStart,
         params: strategyParams,
       });
-      const netWithdraw = Math.max(0, grossNeed - offset);
+      // Cash mortgage (fixed nominal) while loan is still active.
+      const yearsSinceFire = age - fireAge;
+      const mortgageDue = (cashMortgageAnnual > 0 && yearsSinceFire < mortgageActiveYearsFromFire)
+        ? cashMortgageAnnual : 0;
+      const netWithdraw = Math.max(0, grossNeed - offset) + mortgageDue;
 
       portfolio -= netWithdraw;
       if (portfolio <= 0) { portfolio = 0; depleted = true; traj[y] = 0; continue; }
@@ -3282,14 +3375,24 @@ const DEFAULT_STATE = {
       investableAssets: 150000, monthlyContribution: 2000, monthlyContributionManual: false,
       annualExpensesNow: 60000, annualExpensesRetirement: 54000, annualExpensesLeanFire: 36000,
       assetBreakdown: { usEquity: 0, intlEquity: 0, intlBonds: 0, sgEquity: 0, commodities: 0, cash: 150000 },
+      // v1.4.0: Custom-per-phase expenses. "twoPhase" (default) uses the two
+      // existing fields above (Now / Retirement). "customPhase" uses the four
+      // fields below (preFire / p1 / p2 / p3), letting the user model a
+      // "go-go / slow-go / no-go" spending pattern across retirement.
+      expenseMode: "twoPhase",
+      expensesPerPhase: { preFire: 60000, p1: 60000, p2: 54000, p3: 45000 },
     },
     separate: {
       p1: { investableAssets: 80000, monthlyContribution: 1200, monthlyContributionManual: false,
             annualExpensesNow: 30000, annualExpensesRetirement: 30000, annualExpensesLeanFire: 20000,
-            assetBreakdown: { usEquity: 0, intlEquity: 0, intlBonds: 0, sgEquity: 0, commodities: 0, cash: 80000 } },
+            assetBreakdown: { usEquity: 0, intlEquity: 0, intlBonds: 0, sgEquity: 0, commodities: 0, cash: 80000 },
+            expenseMode: "twoPhase",
+            expensesPerPhase: { preFire: 30000, p1: 32000, p2: 30000, p3: 24000 } },
       p2: { investableAssets: 70000, monthlyContribution: 800,  monthlyContributionManual: false,
             annualExpensesNow: 30000, annualExpensesRetirement: 24000, annualExpensesLeanFire: 16000,
-            assetBreakdown: { usEquity: 0, intlEquity: 0, intlBonds: 0, sgEquity: 0, commodities: 0, cash: 70000 } },
+            assetBreakdown: { usEquity: 0, intlEquity: 0, intlBonds: 0, sgEquity: 0, commodities: 0, cash: 70000 },
+            expenseMode: "twoPhase",
+            expensesPerPhase: { preFire: 30000, p1: 26000, p2: 24000, p3: 20000 } },
     },
   },
   assumptions: {
@@ -3355,7 +3458,22 @@ const DEFAULT_STATE = {
   housing: {
     propertyValue: 0, propertyLoan: 0,
     propertyRateAnnual: 0.025, propertyTenureYears: 25, propertyAppreciation: 0.02,
+    // Legacy boolean — preserved for JSON export/import back-compat. The
+    // authoritative inputs are `split` and per-person `cpfPct` below.
+    // `reconcileLegacyHousingSplit` keeps this in sync on load.
     payMortgageViaCpf: false,
+    // Mortgage payment split between Person 1 and Person 2 — stored as
+    // fractions in [0, 1] (codebase convention used by fSliderPct). Must sum
+    // to 1.0. In single mode, p1Pct = 1.0 / p2Pct = 0 (P2 doesn't exist).
+    // In couple mode, defaults to 1.0/0 to preserve solo-payer behaviour
+    // until the user explicitly customises.
+    split: { p1Pct: 1.0, p2Pct: 0.0 },
+    // For each person, what fraction of THEIR share comes from CPF OA (vs cash).
+    // 0.0 = entirely cash (no OA debit)
+    // 1.0 = entirely CPF OA (current monthly payment debited from OA)
+    // Anything in between is a per-person CPF/cash split.
+    p1: { cpfPct: 0.0 },
+    p2: { cpfPct: 0.0 },
   },
   ui: { activePersonTab: "p1", activeTopTab: "planner", yoyTab: "financial" },
 };
@@ -3474,7 +3592,7 @@ const Storage = {
       const fromHash = loadFromUrlHash();
       if (fromHash) {
         const migrated = migrateState(fromHash);
-        if (migrated) { STATE = deepMerge(structuredClone(DEFAULT_STATE), migrated); reconcileLegacyInvestable(); reconcileLegacyCpfHelpFlag(migrated); reconcileLegacyPortfolioStrategy(migrated); return "hash"; }
+        if (migrated) { STATE = deepMerge(structuredClone(DEFAULT_STATE), migrated); reconcileLegacyInvestable(); reconcileLegacyCpfHelpFlag(migrated); reconcileLegacyPortfolioStrategy(migrated); reconcileLegacyHousingSplit(migrated); return "hash"; }
       }
     } catch (e) { console.warn("Hash load failed:", e); }
     try {
@@ -3482,7 +3600,7 @@ const Storage = {
       if (raw) {
         const obj = JSON.parse(raw);
         const migrated = migrateState(obj);
-        if (migrated) { STATE = deepMerge(structuredClone(DEFAULT_STATE), migrated); reconcileLegacyInvestable(); reconcileLegacyCpfHelpFlag(migrated); reconcileLegacyPortfolioStrategy(migrated); return "localstorage"; }
+        if (migrated) { STATE = deepMerge(structuredClone(DEFAULT_STATE), migrated); reconcileLegacyInvestable(); reconcileLegacyCpfHelpFlag(migrated); reconcileLegacyPortfolioStrategy(migrated); reconcileLegacyHousingSplit(migrated); return "localstorage"; }
       }
     } catch (e) { console.warn("LocalStorage load failed:", e); }
     return null;
@@ -3554,6 +3672,27 @@ function setStructural(path, value, ...rerenders) {
   try { recompute(); refreshComputed(); } catch (e) { console.error(e); }
 }
 
+// v1.4.0: Toggle a slot's expense mode AND seed the destination shape from
+// the source so the user doesn't see stale defaults. Going twoPhase→custom
+// copies (Now, Retirement) into (preFire, p1=p2=p3). Going custom→twoPhase
+// leaves the legacy fields alone (they may have been edited independently).
+function setExpenseMode(basePath, newMode) {
+  const slot = Util.deepGet(STATE, basePath);
+  if (!slot) return;
+  const oldMode = slot.expenseMode || "twoPhase";
+  if (oldMode === newMode) return;
+  if (newMode === "customPhase") {
+    // Seed per-phase from the two-phase values (the user's expressed intent).
+    const now = slot.annualExpensesNow || 0;
+    const ret = slot.annualExpensesRetirement || 0;
+    Util.deepSet(STATE, `${basePath}.expensesPerPhase`, { preFire: now, p1: ret, p2: ret, p3: ret });
+  }
+  Util.deepSet(STATE, `${basePath}.expenseMode`, newMode);
+  Storage.save();
+  renderExpenses();
+  try { recompute(); refreshComputed(); } catch (e) { console.error(e); }
+}
+
 function setSaveStatus(status) {
   const ind = document.getElementById("save-indicator");
   const txt = document.getElementById("save-text");
@@ -3618,11 +3757,12 @@ function fNum({ label, path, hint, min, max, step, info }) {
   </div>`;
 }
 
-function fMoney({ label, path, hint, min = 0, step = 1000, info }) {
+function fMoney({ label, path, hint, hintId, min = 0, step = 1000, info }) {
   const id = id_of(path);
   const v = Util.deepGet(STATE, path);
+  const hintHtml = hint ? ` <span class="hint"${hintId ? ` id="${hintId}"` : ""}>${hint}</span>` : "";
   return `<div class="field">
-    <label for="${id}">${label}${_infoIcon(info)}${hint ? ` <span class="hint">${hint}</span>` : ""}</label>
+    <label for="${id}">${label}${_infoIcon(info)}${hintHtml}</label>
     <div class="input-prefix">
       <span class="prefix">S$</span>
       <input type="number" id="${id}" value="${v}" min="${min}" step="${step}"
@@ -3849,42 +3989,118 @@ function renderProfileIncome() {
   `;
 }
 
+// v1.4.0: shared block for the Expenses inputs — handles both two-phase and
+// custom-per-phase layouts plus the mode toggle. `basePath` is the STATE path
+// to the slot (e.g. "finances.combined" or "finances.separate.p1"). `fireAge`
+// is the person's (or household min) FIRE age — used in the per-phase row
+// hints to anchor what "P1" / "P2" / "P3" mean concretely for this user.
+function _renderExpenseInputsForSlot(basePath, fireAge) {
+  const slot = Util.deepGet(STATE, basePath) || {};
+  const isCustom = slot.expenseMode === "customPhase";
+  // Stable ID suffix used for per-slot DOM patch targets in refreshComputed.
+  const safeId = basePath.replace(/\./g, "_");
+  const toggle = `
+    <div class="config-block" style="margin-bottom:14px;">
+      <div class="label">Expense profile</div>
+      <div class="toggle-group">
+        <button class="${!isCustom ? "active" : ""}"
+                onclick="setExpenseMode('${basePath}', 'twoPhase')">Simple</button>
+        <button class="${isCustom ? "active" : ""}"
+                onclick="setExpenseMode('${basePath}', 'customPhase')">Custom per phase</button>
+      </div>
+    </div>`;
+
+  if (!isCustom) {
+    // ── Simple / two-phase (existing v1.3.x layout) ───────────────────
+    return toggle + `
+      <div class="row cols-3">
+        ${fMoney({ label: "Current Annual Expenses",      path: `${basePath}.annualExpensesNow`,        step: 1000 })}
+        ${fMoney({ label: "Retirement Annual Expenses",   path: `${basePath}.annualExpensesRetirement`, step: 1000 })}
+        ${fMoney({ label: "LeanFIRE Annual Expenses",     path: `${basePath}.annualExpensesLeanFire`,   step: 1000 })}
+      </div>`;
+  }
+
+  // ── Custom per-phase (v1.4.0) ───────────────────────────────────────
+  // P1 (Bridge) is only meaningful when FIRE age < 55 — the Bridge phase
+  // spans from FIRE to CPF OA unlock at 55. If FIRE age ≥ 55 there is no
+  // bridge, so we grey out the field. refreshComputed keeps the hint and
+  // disabled state live as the user edits their FIRE age.
+  const p1Disabled = fireAge >= 55;
+  const p1Hint     = p1Disabled ? "N/A — FIRE ≥ 55" : `Age ${fireAge}–54`;
+  const p1Field    = fMoney({
+    label: "P1 Bridge",
+    path:  `${basePath}.expensesPerPhase.p1`,
+    hint:  p1Hint,
+    hintId: `p1-bridge-hint-${safeId}`,
+    step:  1000,
+  });
+  const p1Wrapped = `<div id="p1-bridge-wrapper-${safeId}"${p1Disabled ? ' style="opacity:0.35;pointer-events:none;"' : ""}>${p1Field}</div>`;
+
+  return toggle + `
+    <div class="row cols-2">
+      ${fMoney({ label: "Pre-FIRE Annual Expenses", path: `${basePath}.expensesPerPhase.preFire`, hint: "today→FIRE", step: 1000 })}
+      ${fMoney({ label: "LeanFIRE Annual Expenses", path: `${basePath}.annualExpensesLeanFire`,   step: 1000 })}
+    </div>
+    <div class="row cols-3" style="margin-top:14px;">
+      ${p1Wrapped}
+      ${fMoney({ label: "P2 Mid-gap",   path: `${basePath}.expensesPerPhase.p2`, hint: "Age 55–64", step: 1000 })}
+      ${fMoney({ label: "P3 Longevity", path: `${basePath}.expensesPerPhase.p3`, hint: "Age 65+",   step: 1000 })}
+    </div>`;
+}
+
 function renderExpenses() {
   const couple = STATE.profile.coupleMode;
   const mode = STATE.finances.mode;
   let inner;
 
-  // Callout shown when mortgage is paid via CPF OA — reminds the user that OA
-  // housing payments are tracked separately and must be excluded from expenses.
-  const h = STATE.housing;
-  const oaCallout = h.payMortgageViaCpf ? (() => {
-    const monthlyOA = Mortgage.calcMonthlyPayment(h.propertyLoan, h.propertyRateAnnual, h.propertyTenureYears);
-    // The <span id="oa-callout-amount"> is patched live in refreshComputed when
-    // the user edits loan/rate/tenure, so the figure tracks without re-render.
-    return `
-      <div class="banner info" id="oa-callout-banner" style="margin-top:14px;font-size:12px;">
-        <strong>Mortgage paid via CPF OA (<span id="oa-callout-amount">${Util.fmtMoney(monthlyOA)}</span>/mo).</strong>
-        Exclude this housing payment from the expense fields above — the OA deduction
-        is tracked automatically in the CPF projection and the Year-by-Year table.
-      </div>`;
-  })() : "";
+  // Inline hint under the expense input row. The Path A engine model
+  // (v1.3.0+) means the mortgage is ALWAYS tracked separately — both the
+  // CPF-funded portion (debited from OA) and the deliberate cash portion
+  // (auto-added to annual expenses). So the rule is unconditional: exclude
+  // the full monthly mortgage from the expense figures above, whenever a
+  // mortgage exists. The hint shows the dollar amount and, when applicable,
+  // the CPF / cash split so the user can sanity-check.
+  const shares = computeHousingCpfShares();
+  const hasMortgage = (STATE.housing.propertyLoan || 0) > 0;
+  const initialHintText = (() => {
+    if (!hasMortgage) return "";
+    const monthly = Util.fmtMoney(shares.monthlyPayment);
+    if (shares.anyViaCpf) {
+      const cash = shares.p1CashMonthly + shares.p2CashMonthly;
+      return `Exclude monthly mortgage (${monthly}/mo) — we auto-debit ${Util.fmtMoney(shares.totalCpfMonthly)}/mo from CPF OA and ${Util.fmtMoney(cash)}/mo from cash expenses.`;
+    }
+    return `Exclude monthly mortgage (${monthly}/mo) — we auto-debit it from cash expenses.`;
+  })();
+  // Inline SVG matches the shape used by `_infoIcon()` elsewhere in the app
+  // (circle outline + vertical stem + small dot at top). Embedded statically
+  // since this icon is non-interactive — no button wrapper or tooltip needed.
+  const infoSvg = `<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="6.5"/><line x1="8" y1="7.5" x2="8" y2="11.5"/><circle cx="8" cy="5" r="0.6" fill="currentColor" stroke="none"/></svg>`;
+  const oaCallout = `<div class="expense-cpf-hint" id="expense-cpf-hint" style="${hasMortgage ? "" : "display:none;"}">${infoSvg}<span id="expense-cpf-hint-text">${initialHintText}</span></div>`;
+
+  // v1.4.0: pull the per-person FIRE ages for the custom-phase hint labels
+  const p1FireAge = STATE.profile.person1.fireAge;
+  const p2FireAge = couple ? STATE.profile.person2.fireAge : p1FireAge;
+  const householdFireAge = couple ? Math.min(p1FireAge, p2FireAge) : p1FireAge;
 
   if (!couple || mode === "combined") {
     const c = STATE.finances.combined;
     const p2net = couple ? calcNetMonthlyTakeHome("p2") : 0;
-    const autoContrib = Math.max(0, calcNetMonthlyTakeHome("p1") + p2net - c.annualExpensesNow / 12);
+    // v1.3.2 + v1.4.0: subtract cash mortgage AND read pre-FIRE expense from
+    // whichever mode is active (per-phase or two-phase) via resolveExpenseProfile.
+    const cashMortgageMonthly = shares.p1CashMonthly + shares.p2CashMonthly;
+    const profile = resolveExpenseProfile(c);
+    const preFireMonthly = profile.preFire / 12;
+    const autoContrib = Math.max(0,
+      calcNetMonthlyTakeHome("p1") + p2net - preFireMonthly - cashMortgageMonthly);
     const p1TH = Util.fmtMoney(calcNetMonthlyTakeHome("p1"));
     const p2TH = couple ? ` + ${Util.fmtMoney(calcNetMonthlyTakeHome("p2"))}` : "";
-    const exp = Util.fmtMoney(c.annualExpensesNow / 12);
-    const breakdown = `(${p1TH}${p2TH} take-home incl. AW/12) − ${exp} expenses`;
+    const exp = Util.fmtMoney(preFireMonthly);
+    const mortBit = cashMortgageMonthly > 0 ? ` − ${Util.fmtMoney(cashMortgageMonthly)} cash mortgage` : "";
+    const breakdown = `(${p1TH}${p2TH} take-home incl. AW/12) − ${exp} expenses${mortBit}`;
     inner = `
       <div class="card">
         <h3>${couple ? "Household " : ""}Expenses &amp; Savings</h3>
-        <div class="row cols-3">
-          ${fMoney({ label: "Current Annual Expenses", path: "finances.combined.annualExpensesNow", step: 1000 })}
-          ${fMoney({ label: "Retirement Annual Expenses", path: "finances.combined.annualExpensesRetirement", step: 1000 })}
-          ${fMoney({ label: "LeanFIRE Annual Expenses", path: "finances.combined.annualExpensesLeanFire", step: 1000 })}
-        </div>
+        ${_renderExpenseInputsForSlot("finances.combined", householdFireAge)}
         ${oaCallout}
         <div class="row cols-3" style="margin-top:14px">
           ${fMoneyAutoComputed({
@@ -3899,18 +4115,20 @@ function renderExpenses() {
     `;
   } else {
     const s = STATE.finances.separate;
-    const autoP1 = effectiveMonthlyContrib(s.p1, "p1");
-    const autoP2 = effectiveMonthlyContrib(s.p2, "p2");
-    const bkP1 = `${Util.fmtMoney(calcNetMonthlyTakeHome("p1"))} take-home (incl. AW/12) − ${Util.fmtMoney(s.p1.annualExpensesNow / 12)} expenses`;
-    const bkP2 = `${Util.fmtMoney(calcNetMonthlyTakeHome("p2"))} take-home (incl. AW/12) − ${Util.fmtMoney(s.p2.annualExpensesNow / 12)} expenses`;
+    // v1.3.2 + v1.4.0: each person's auto-contrib nets out cash mortgage AND uses
+    // their per-phase pre-FIRE expense (via effectiveMonthlyContrib).
+    const autoP1 = effectiveMonthlyContrib(s.p1, "p1", shares.p1CashMonthly);
+    const autoP2 = effectiveMonthlyContrib(s.p2, "p2", shares.p2CashMonthly);
+    const profP1 = resolveExpenseProfile(s.p1);
+    const profP2 = resolveExpenseProfile(s.p2);
+    const mortBitP1 = shares.p1CashMonthly > 0 ? ` − ${Util.fmtMoney(shares.p1CashMonthly)} cash mortgage` : "";
+    const mortBitP2 = shares.p2CashMonthly > 0 ? ` − ${Util.fmtMoney(shares.p2CashMonthly)} cash mortgage` : "";
+    const bkP1 = `${Util.fmtMoney(calcNetMonthlyTakeHome("p1"))} take-home (incl. AW/12) − ${Util.fmtMoney(profP1.preFire / 12)} expenses${mortBitP1}`;
+    const bkP2 = `${Util.fmtMoney(calcNetMonthlyTakeHome("p2"))} take-home (incl. AW/12) − ${Util.fmtMoney(profP2.preFire / 12)} expenses${mortBitP2}`;
     inner = `
       <div class="card">
         <h3>${STATE.profile.person1.name} — Expenses &amp; Savings</h3>
-        <div class="row cols-3">
-          ${fMoney({ label: "Current Annual Expenses", path: "finances.separate.p1.annualExpensesNow", step: 1000 })}
-          ${fMoney({ label: "Retirement Annual Expenses", path: "finances.separate.p1.annualExpensesRetirement", step: 1000 })}
-          ${fMoney({ label: "LeanFIRE Annual Expenses", path: "finances.separate.p1.annualExpensesLeanFire", step: 1000 })}
-        </div>
+        ${_renderExpenseInputsForSlot("finances.separate.p1", p1FireAge)}
         ${oaCallout}
         <div class="row cols-3" style="margin-top:14px">
           ${fMoneyAutoComputed({
@@ -3924,11 +4142,7 @@ function renderExpenses() {
       </div>
       <div class="card">
         <h3>${STATE.profile.person2.name} — Expenses &amp; Savings</h3>
-        <div class="row cols-3">
-          ${fMoney({ label: "Current Annual Expenses", path: "finances.separate.p2.annualExpensesNow", step: 1000 })}
-          ${fMoney({ label: "Retirement Annual Expenses", path: "finances.separate.p2.annualExpensesRetirement", step: 1000 })}
-          ${fMoney({ label: "LeanFIRE Annual Expenses", path: "finances.separate.p2.annualExpensesLeanFire", step: 1000 })}
-        </div>
+        ${_renderExpenseInputsForSlot("finances.separate.p2", p2FireAge)}
         <div class="row cols-3" style="margin-top:14px">
           ${fMoneyAutoComputed({
             label: "Monthly contribution (pre-FIRE)",
@@ -3944,7 +4158,92 @@ function renderExpenses() {
   document.getElementById("section-expenses-body").innerHTML = inner;
 }
 
+// Possessive form: "Your" for the default "You", otherwise "{name}'s".
+// Avoids the ungrammatical "You's" while keeping arbitrary names readable.
+// Top-level so renderHousing AND refreshComputed both speak it.
+function housingPossessive(name) { return name === "You" ? "Your" : `${name}'s`; }
+
 function renderHousing() {
+  const couple = STATE.profile.coupleMode;
+  const h = STATE.housing;
+  const p1Name = STATE.profile.person1.name || "You";
+  const p2Name = STATE.profile.person2.name || "Partner";
+  const p1Poss = housingPossessive(p1Name);
+  const p2Poss = housingPossessive(p2Name);
+
+  // The CPF controls are gated behind a single toggle (`payMortgageViaCpf`),
+  // which functions as the user's entry point. When OFF, no sliders show —
+  // a clean default state. When ON, the sliders appear with whatever values
+  // the user previously set (or sensible defaults via toggleHousingCpf).
+  const showCpfControls = !!h.payMortgageViaCpf;
+
+  // Info tooltip on the toggle — matches the SVG `_infoIcon()` style used
+  // by other toggles in the app (e.g. Safety Buffer's CPF-help checkbox).
+  const cpfInfoTooltip = `
+    <span class="info-tooltip">
+      <div class="info-tooltip-title">Mortgage paid via CPF OA</div>
+      <div class="info-tooltip-note">Debits all or part of the monthly mortgage payment from CPF Ordinary Account. In couple mode you can split the share between partners and choose how much of each share comes from CPF vs cash. If OA depletes before the loan is paid off, the unpaid portion automatically routes back to cash.</div>
+    </span>`;
+
+  let cpfControls = "";
+  if (showCpfControls) {
+    if (!couple) {
+      cpfControls = `
+        <div class="row cols-1" style="margin-top:0.75rem">
+          <div class="field">
+            ${fSliderPct({
+              label: "Paid via your CPF OA",
+              path: "housing.p1.cpfPct",
+              min: 0, max: 100, step: 5,
+              belowSlider: `<span class="hint" id="housing-p1-cpf-summary">—</span>`,
+            })}
+          </div>
+        </div>`;
+    } else {
+      // Per-person CPF % sliders only make sense when that person actually
+      // contributes some share of the mortgage. When P1's share = 0, their
+      // CPF slider has no money to allocate and should be disabled. Same for
+      // P2 when their share = 0 (i.e. P1's share = 100%). Toggled live by
+      // refreshComputed on every slider drag.
+      const p1Share = h.split?.p1Pct ?? 1;
+      const p2Share = 1 - p1Share;
+      const eps = 0.001;
+      const p1CpfDisabled = p1Share < eps;
+      const p2CpfDisabled = p2Share < eps;
+      cpfControls = `
+        <div class="row cols-1" style="margin-top:0.75rem">
+          <div class="field">
+            ${fSliderPct({
+              label: `${p1Poss} share of mortgage`,
+              path: "housing.split.p1Pct",
+              min: 0, max: 100, step: 5,
+              belowSlider: `<span class="hint" id="housing-split-partner-hint">${p2Name}: ${Math.round(p2Share * 100)}%</span>`,
+            })}
+          </div>
+        </div>
+        <div class="row cols-2" style="margin-top:0.5rem">
+          <div class="field">
+            ${fSliderPct({
+              label: `${p1Poss} share via CPF OA`,
+              path: "housing.p1.cpfPct",
+              min: 0, max: 100, step: 5,
+              disabled: p1CpfDisabled,
+              belowSlider: `<span class="hint" id="housing-p1-cpf-summary">—</span>`,
+            })}
+          </div>
+          <div class="field">
+            ${fSliderPct({
+              label: `${p2Poss} share via CPF OA`,
+              path: "housing.p2.cpfPct",
+              min: 0, max: 100, step: 5,
+              disabled: p2CpfDisabled,
+              belowSlider: `<span class="hint" id="housing-p2-cpf-summary">—</span>`,
+            })}
+          </div>
+        </div>`;
+    }
+  }
+
   document.getElementById("section-housing-body").innerHTML = `
     <div class="card">
       <h3>Housing &amp; mortgage</h3>
@@ -3965,20 +4264,59 @@ function renderHousing() {
         </div>
       </div>
       <div class="row cols-1" style="margin-top:0.75rem">
-        <div class="field">
-          <div class="checkbox-row">
-            <input type="checkbox" id="cb-payMortgageViaCpf"
-                   ${STATE.housing.payMortgageViaCpf ? "checked" : ""}
-                   onchange="setState('housing.payMortgageViaCpf', this.checked); renderExpenses(); recompute();">
-            <label for="cb-payMortgageViaCpf">Monthly payment via CPF OA?</label>
-          </div>
+        <div class="checkbox-row">
+          <input type="checkbox" id="cb-payMortgageViaCpf"
+                 ${showCpfControls ? "checked" : ""}
+                 onchange="toggleHousingCpf(this.checked)">
+          <label for="cb-payMortgageViaCpf">Pay mortgage via CPF OA?${_infoIcon(cpfInfoTooltip)}</label>
         </div>
       </div>
-      <div class="footnote">
-        Property equity adds to net worth but doesn't fund retirement spending unless you downsize.
-      </div>
+      ${cpfControls}
     </div>
   `;
+}
+
+// Toggle handler for the housing CPF entry-point checkbox. Sets sensible
+// defaults when enabling (P1 covers via CPF; P2 also covers in couple mode);
+// zeros all per-person CPF % when disabling so the engine treats the mortgage
+// as fully cash-funded. Split (p1Pct / p2Pct) is preserved either way — it's
+// orthogonal to whether the payment is via CPF or cash.
+function toggleHousingCpf(enabled) {
+  const couple = STATE.profile.coupleMode;
+  STATE.housing.payMortgageViaCpf = !!enabled;
+  if (enabled) {
+    STATE.housing.p1 = { cpfPct: 1.0 };
+    STATE.housing.p2 = { cpfPct: couple ? 1.0 : 0.0 };
+  } else {
+    STATE.housing.p1 = { cpfPct: 0.0 };
+    STATE.housing.p2 = { cpfPct: 0.0 };
+  }
+  Storage.save();
+  renderHousing();
+  renderExpenses();
+  recompute();
+  refreshComputed();
+}
+
+// Sync derived housing fields whenever a controlled slider mutates state:
+//   • split.p2Pct mirrors (1 − split.p1Pct) so the two always sum to 1.0
+//   • payMortgageViaCpf (legacy boolean) stays accurate for JSON exports
+//     and back-compat with older planner versions reading the snapshot
+// All housing percentage fields are stored as fractions in [0, 1] —
+// matching fSliderPct's storage convention.
+// Called from recompute() so it fires on every state change, no per-slider
+// wiring needed.
+function syncHousingDerived() {
+  if (!STATE.housing) return;
+  // 1. Mirror p2Pct from p1Pct (in [0, 1])
+  if (STATE.housing.split) {
+    const p1 = Math.max(0, Math.min(1, STATE.housing.split.p1Pct ?? 1));
+    STATE.housing.split.p1Pct = p1;
+    STATE.housing.split.p2Pct = 1 - p1;
+  }
+  // 2. Sync legacy flag from per-person CPF shares
+  const s = computeHousingCpfShares();
+  STATE.housing.payMortgageViaCpf = s.anyViaCpf;
 }
 
 // Derive the nominal portfolio return from the pre-FIRE allocation and current inflation.
@@ -4125,6 +4463,68 @@ function reconcileLegacyPortfolioStrategy(rawSnapshot) {
     else if (legacy === "simple")  STATE.portfolio.strategy = "glidepath";
     // (no legacy field → keep DEFAULT_STATE's "flat")
   } catch {}
+}
+
+// Migrate the legacy `housing.payMortgageViaCpf` boolean to the new per-person
+// split + CPF/cash mix model. Pre-migration, the flag meant "P1 covers 100% of
+// the mortgage via CPF OA" (or 0% if false). Post-migration, the per-person
+// split + cpfPct fields are authoritative. The legacy boolean stays in state
+// (kept in sync) so older JSON exports / hash links continue to round-trip.
+function reconcileLegacyHousingSplit(rawSnapshot) {
+  try {
+    const housing = rawSnapshot && rawSnapshot.housing;
+    if (!housing) return;
+    // If the new split fields already exist in the snapshot, honor them
+    if (housing.split && housing.p1 && housing.p2) return;
+    // Otherwise, derive from the legacy `payMortgageViaCpf` boolean.
+    // All housing percentages are stored as fractions in [0, 1].
+    const legacy = !!housing.payMortgageViaCpf;
+    STATE.housing.split = { p1Pct: 1.0, p2Pct: 0.0 };
+    STATE.housing.p1 = { cpfPct: legacy ? 1.0 : 0.0 };
+    STATE.housing.p2 = { cpfPct: 0.0 };
+  } catch {}
+}
+
+// Single source of truth for housing CPF mechanics. Returns per-person
+// annual OA debits + nominal monthly amounts + a summary flag. Used by
+// cpfInputsFor, computeYearlyProjection, the OA callout in Expenses,
+// and the renderHousing UI.
+//
+// All percentage fields are fractions in [0, 1] (codebase convention).
+// Formula per person:
+//   personMortgageShare = monthlyPayment × split.pXPct
+//   personCpfMonthly     = personMortgageShare × pX.cpfPct
+//   personCashMonthly    = personMortgageShare × (1 − pX.cpfPct)
+//
+// `anyViaCpf` is true iff EITHER person has cpfPct > 0 AND their share > 0.
+// `tenure` is the property's remaining tenure (years) — shared across both.
+function computeHousingCpfShares() {
+  const h = STATE.housing || {};
+  const monthlyPayment = Mortgage.calcMonthlyPayment(
+    h.propertyLoan || 0,
+    h.propertyRateAnnual || 0,
+    h.propertyTenureYears || 0
+  );
+  const split = h.split || { p1Pct: 1.0, p2Pct: 0.0 };
+  const p1CpfPct = (h.p1 && h.p1.cpfPct != null) ? h.p1.cpfPct : 0;
+  const p2CpfPct = (h.p2 && h.p2.cpfPct != null) ? h.p2.cpfPct : 0;
+  const p1ShareMonthly = monthlyPayment * split.p1Pct;
+  const p2ShareMonthly = monthlyPayment * split.p2Pct;
+  const p1CpfMonthly   = p1ShareMonthly * p1CpfPct;
+  const p2CpfMonthly   = p2ShareMonthly * p2CpfPct;
+  const p1CashMonthly  = p1ShareMonthly - p1CpfMonthly;
+  const p2CashMonthly  = p2ShareMonthly - p2CpfMonthly;
+  return {
+    monthlyPayment,
+    p1ShareMonthly, p2ShareMonthly,
+    p1CpfMonthly, p2CpfMonthly,
+    p1CashMonthly, p2CashMonthly,
+    p1CpfAnnual: p1CpfMonthly * 12,
+    p2CpfAnnual: p2CpfMonthly * 12,
+    totalCpfMonthly: p1CpfMonthly + p2CpfMonthly,
+    anyViaCpf: (p1CpfMonthly > 0 || p2CpfMonthly > 0),
+    tenure: h.propertyTenureYears || 0,
+  };
 }
 
 // Patch the readonly investable-total pill(s) in place. Called by refreshComputed().
@@ -5088,6 +5488,16 @@ function runSimulation() {
     usLongSeries:  DataLoader.get().usLongSeries,
     cpiUS:         DataLoader.get().cpiUS,
     blockSize:     sim.blockSize,
+    // v1.3.1: cash mortgage debit during retirement years
+    cashMortgageAnnual: R.cashMortgageAnnual || 0,
+    mortgageActiveYearsFromFire: R.mortgageActiveYearsFromFire || 0,
+    // v1.3.2: pre-FIRE add-back (only meaningful when MC starts pre-FIRE, i.e.
+    // not in buffered-target scenarios)
+    mortgageActivePreFireYears: R.mortgageActivePreFireYears || 0,
+    // v1.4.0: per-phase expense profile (today's $). Drives per-year base
+    // withdrawal in the drawdown loop. Falls back to constant annualExpense
+    // when null (two-phase mode resolves to a flat profile so this is moot).
+    expenseProfile: R.expenseProfile || null,
   };
 
   const t0 = performance.now();
@@ -5382,11 +5792,108 @@ function refreshComputed() {
     const h = STATE.housing;
     const monthly = Mortgage.calcMonthlyPayment(h.propertyLoan, h.propertyRateAnnual, h.propertyTenureYears);
     mm.value = monthly > 0 ? Math.round(monthly).toLocaleString("en-SG") : "—";
-    // Live-patch the OA callout in the Expenses card (only present when toggle is on).
-    // Updating the inner span keeps focus on whatever input the user is editing.
-    const callAmt = document.getElementById("oa-callout-amount");
-    if (callAmt && STATE.housing.payMortgageViaCpf) {
-      callAmt.textContent = Util.fmtMoney(monthly);
+  }
+
+  // Live-patch every housing-related summary span in one pass — uses
+  // computeHousingCpfShares as the single source of truth so the displayed
+  // amounts are always consistent with what the engine will see. Updating
+  // text content (rather than re-rendering the card) keeps focus on whatever
+  // slider the user is dragging.
+  const shares = computeHousingCpfShares();
+
+  // 1. Inline expense-CPF hint under the expense input row.
+  //    Path A model: rule is unconditional whenever a mortgage exists.
+  //    "Exclude the full monthly mortgage — we track CPF and cash portions."
+  //    Hidden when no mortgage is configured.
+  const expHint = document.getElementById("expense-cpf-hint");
+  const expHintText = document.getElementById("expense-cpf-hint-text");
+  if (expHint && expHintText) {
+    const hasMortgage = (STATE.housing.propertyLoan || 0) > 0;
+    if (!hasMortgage) {
+      expHint.style.display = "none";
+    } else {
+      expHint.style.display = "";
+      const monthly = Util.fmtMoney(shares.monthlyPayment);
+      if (shares.anyViaCpf) {
+        const cash = shares.p1CashMonthly + shares.p2CashMonthly;
+        expHintText.textContent = `Exclude monthly mortgage (${monthly}/mo) — we auto-debit ${Util.fmtMoney(shares.totalCpfMonthly)}/mo from CPF OA and ${Util.fmtMoney(cash)}/mo from cash expenses.`;
+      } else {
+        expHintText.textContent = `Exclude monthly mortgage (${monthly}/mo) — we auto-debit it from cash expenses.`;
+      }
+    }
+  }
+
+  // 2. Couple-mode split partner-pct hint under the split slider.
+  const splitHint = document.getElementById("housing-split-partner-hint");
+  if (splitHint) {
+    const p2Name = STATE.profile.person2.name || "Partner";
+    const p2Pct = Math.round((1 - (STATE.housing.split?.p1Pct ?? 1)) * 100);
+    splitHint.textContent = `${p2Name}: ${p2Pct}%`;
+  }
+
+  // 2b. Toggle the per-person CPF % slider's `disabled` attribute based on
+  //     whether that person actually has a share of the mortgage. Prevents
+  //     a confusing UX where the slider can be moved but contributes zero.
+  //     `id_of("housing.p1.cpfPct")` matches the id pattern that fSliderPct
+  //     uses; we read it via DOM lookup so we don't have to re-render the
+  //     whole housing card on every split-slider drag.
+  const p1Share = STATE.housing.split?.p1Pct ?? 1;
+  const p2Share = 1 - p1Share;
+  const eps = 0.001;
+  const p1CpfSlider = document.getElementById(id_of("housing.p1.cpfPct"));
+  if (p1CpfSlider) {
+    if (p1Share < eps) p1CpfSlider.setAttribute("disabled", "");
+    else p1CpfSlider.removeAttribute("disabled");
+  }
+  const p2CpfSlider = document.getElementById(id_of("housing.p2.cpfPct"));
+  if (p2CpfSlider) {
+    if (p2Share < eps) p2CpfSlider.setAttribute("disabled", "");
+    else p2CpfSlider.removeAttribute("disabled");
+  }
+
+  // 3. Per-person live $-summary under each CPF% slider.
+  //    Single mode shows just P1's summary; couple mode shows both.
+  //    `housingPossessive()` keeps the wording grammatical when the user's
+  //    name is the default "You" — "Your" rather than "You's".
+  const p1Name = STATE.profile.person1.name || "You";
+  const p2Name = STATE.profile.person2.name || "Partner";
+  const couple = STATE.profile.coupleMode;
+  const p1Summary = document.getElementById("housing-p1-cpf-summary");
+  if (p1Summary) {
+    const cpf = Util.fmtMoney(shares.p1CpfMonthly);
+    const cash = Util.fmtMoney(shares.p1CashMonthly);
+    const ownerLabel = couple ? `${housingPossessive(p1Name)} CPF OA` : "CPF OA";
+    p1Summary.textContent = `${cpf}/mo via ${ownerLabel} · ${cash}/mo cash`;
+  }
+  const p2Summary = document.getElementById("housing-p2-cpf-summary");
+  if (p2Summary) {
+    const cpf = Util.fmtMoney(shares.p2CpfMonthly);
+    const cash = Util.fmtMoney(shares.p2CashMonthly);
+    p2Summary.textContent = `${cpf}/mo via ${housingPossessive(p2Name)} CPF OA · ${cash}/mo cash`;
+  }
+
+  // Live-patch P1 Bridge hint text and disabled state whenever FIRE age changes.
+  // The hint (Age X–54) and the greyed-out wrapper both depend on the per-slot
+  // FIRE age, which is updated via setState (not via a full renderExpenses call).
+  // Patching here keeps the expense card inputs live without losing focus.
+  {
+    const _p1FireAge = STATE.profile.person1.fireAge || 55;
+    const _p2FireAge = STATE.profile.person2.fireAge || 55;
+    const _hhFireAge = Math.min(_p1FireAge, _p2FireAge);
+    const _slots = [
+      { safeId: "finances_combined",    fireAge: _hhFireAge },
+      { safeId: "finances_separate_p1", fireAge: _p1FireAge },
+      { safeId: "finances_separate_p2", fireAge: _p2FireAge },
+    ];
+    for (const { safeId: sid, fireAge: fa } of _slots) {
+      const disabled = fa >= 55;
+      const hintEl = document.getElementById(`p1-bridge-hint-${sid}`);
+      if (hintEl) hintEl.textContent = disabled ? "N/A — FIRE ≥ 55" : `Age ${fa}–54`;
+      const wrapEl = document.getElementById(`p1-bridge-wrapper-${sid}`);
+      if (wrapEl) {
+        wrapEl.style.opacity       = disabled ? "0.35" : "";
+        wrapEl.style.pointerEvents = disabled ? "none" : "";
+      }
     }
   }
 
@@ -5458,9 +5965,68 @@ function calcNetMonthlyTakeHome(pk) {
 }
 
 // Effective monthly investable contribution for a finances slot
-function effectiveMonthlyContrib(slot, pk) {
+// v1.3.2: optional `cashMortgageMonthly` is the person's cash share of the
+// monthly mortgage. Path A excludes mortgage from `annualExpensesNow`, so the
+// raw subtraction (take-home − expenses) overstates contribution by the cash
+// mortgage burden. Subtract it here so the headline figure reflects today's
+// real savings rate. Manual-override path is left untouched (user said what
+// they're saving — we trust them).
+function effectiveMonthlyContrib(slot, pk, cashMortgageMonthly = 0) {
   if (slot.monthlyContributionManual) return slot.monthlyContribution;
-  return Math.max(0, calcNetMonthlyTakeHome(pk) - slot.annualExpensesNow / 12);
+  // v1.4.0: Pre-FIRE expenses use the per-phase value if Custom mode, else
+  // the legacy single field. Custom mode lets the user model a different
+  // current spend than retirement spend without affecting the "Now" field.
+  const profile = resolveExpenseProfile(slot);
+  const expensesNow = profile.preFire;
+  return Math.max(0,
+    calcNetMonthlyTakeHome(pk) - expensesNow / 12 - (cashMortgageMonthly || 0));
+}
+
+// v1.4.0: Build a per-phase expense profile for a slot. Returns 4 values in
+// today's $ (real): preFire / p1 / p2 / p3. In two-phase mode, p1/p2/p3 all
+// equal annualExpensesRetirement (current behaviour). In custom mode, each
+// phase reads from expensesPerPhase, falling back to the legacy fields when
+// a per-phase field is missing (handles loaded-from-old-state gracefully).
+function resolveExpenseProfile(slot) {
+  const legacyNow = slot.annualExpensesNow || 0;
+  const legacyRet = slot.annualExpensesRetirement || 0;
+  if (slot.expenseMode !== "customPhase") {
+    return { mode: "twoPhase", preFire: legacyNow, p1: legacyRet, p2: legacyRet, p3: legacyRet };
+  }
+  const e = slot.expensesPerPhase || {};
+  return {
+    mode: "customPhase",
+    preFire: e.preFire != null ? e.preFire : legacyNow,
+    p1:      e.p1      != null ? e.p1      : legacyRet,
+    p2:      e.p2      != null ? e.p2      : legacyRet,
+    p3:      e.p3      != null ? e.p3      : legacyRet,
+  };
+}
+
+// v1.4.0: Phase boundaries from the 3-Phase FIRE model:
+//   • preFire — age < fireAge
+//   • P1 Bridge — fireAge ≤ age < 55 (CPF unlocked at 55, no CPF LIFE yet)
+//   • P2 Mid-gap — 55 ≤ age < 65 (OA released, before CPF LIFE)
+//   • P3 Longevity — age ≥ 65 (CPF LIFE active)
+// Returns the per-year expense baseline in today's $.
+function expenseAtAge(age, fireAge, profile) {
+  if (age < fireAge) return profile.preFire;
+  if (age < 55) return profile.p1;
+  if (age < 65) return profile.p2;
+  return profile.p3;
+}
+
+// v1.4.0: Sum two per-person profiles into a household profile (used in
+// couple + separate-finances mode where each person owns their own profile).
+function sumExpenseProfiles(a, b) {
+  if (!b) return a;
+  return {
+    mode: (a.mode === "customPhase" || b.mode === "customPhase") ? "customPhase" : "twoPhase",
+    preFire: (a.preFire || 0) + (b.preFire || 0),
+    p1:      (a.p1      || 0) + (b.p1      || 0),
+    p2:      (a.p2      || 0) + (b.p2      || 0),
+    p3:      (a.p3      || 0) + (b.p3      || 0),
+  };
 }
 
 function computeAll() {
@@ -5489,12 +6055,19 @@ function computeAll() {
       maBalance: cpf.maBalance,
       voluntaryTopupSA: 0,
       voluntaryTopupMA: 0,
-      housingDeductionAnnual: (pk === "p1" && STATE.housing.payMortgageViaCpf)
-        ? Mortgage.calcMonthlyPayment(STATE.housing.propertyLoan, STATE.housing.propertyRateAnnual, STATE.housing.propertyTenureYears) * 12
-        : 0,
-      housingTenureYears: (pk === "p1" && STATE.housing.payMortgageViaCpf)
-        ? (STATE.housing.propertyTenureYears || 0)
-        : 0,
+      // Per-person CPF mortgage burden — computed by computeHousingCpfShares().
+      // Tenure is the same for both (it's a property of the loan, not the
+      // payer); set to 0 when this person isn't contributing via CPF so the
+      // engine's tenure cap is harmless.
+      housingDeductionAnnual: (() => {
+        const s = computeHousingCpfShares();
+        return pk === "p1" ? s.p1CpfAnnual : s.p2CpfAnnual;
+      })(),
+      housingTenureYears: (() => {
+        const s = computeHousingCpfShares();
+        const personCpf = pk === "p1" ? s.p1CpfAnnual : s.p2CpfAnnual;
+        return personCpf > 0 ? s.tenure : 0;
+      })(),
       pledgeProperty: cpf.pledgeProperty,
       cpfLifePlan: cpf.cpfLifePlan,
       autoTransferOaPost55: cpf.autoTransferOaPost55,
@@ -5505,27 +6078,56 @@ function computeAll() {
   const cpfP1 = CPF.simulateCpfAccumulation(cpfInputsFor("p1"), currentYear);
   const cpfP2 = couple ? CPF.simulateCpfAccumulation(cpfInputsFor("p2"), currentYear) : null;
 
+  // v1.3.2: Hoist housing shares so cash-mortgage burden can net out of the
+  // current-monthly-contribution calculation (Path A excludes mortgage from
+  // expense inputs, so without this subtraction monthlyContrib is overstated
+  // by the cash share for every household paying mortgage in cash).
+  const _housingShares = computeHousingCpfShares();
+  const cashMortgageAnnualTotal = (_housingShares.p1CashMonthly + _housingShares.p2CashMonthly) * 12;
+  const p1CashMortgageMonthly = _housingShares.p1CashMonthly;
+  const p2CashMortgageMonthly = _housingShares.p2CashMonthly;
+
   // Resolve household finances
   let investable, monthlyContrib, annualExpRet, annualExpNow, annualExpLean;
+  // v1.4.0: household-level per-phase expense profile. In combined mode it's
+  // the combined slot's profile; in separate mode it's the sum of per-person
+  // profiles. Downstream consumers (FIRE target, MC, YoY) use this for per-year
+  // expense lookup. `annualExpRet` is kept as a single representative value
+  // (used by legacy display + SWR-target hint); we set it to phase P1 since
+  // it's the first retirement year's spending.
+  let expenseProfile;
+  let p1Profile = null, p2Profile = null;  // per-person profiles (separate mode only)
   if (!couple || fmode === "combined") {
     const c = STATE.finances.combined;
     investable = c.investableAssets;
+    expenseProfile = resolveExpenseProfile(c);
     // Combined auto-contrib = (p1 + p2 net take-home) − combined monthly expenses
+    //                         − combined cash-mortgage burden (Path A)
     if (c.monthlyContributionManual) {
       monthlyContrib = c.monthlyContribution;
     } else {
       const p2net = couple ? calcNetMonthlyTakeHome("p2") : 0;
-      monthlyContrib = Math.max(0, calcNetMonthlyTakeHome("p1") + p2net - c.annualExpensesNow / 12);
+      monthlyContrib = Math.max(0,
+        calcNetMonthlyTakeHome("p1") + p2net
+        - expenseProfile.preFire / 12
+        - cashMortgageAnnualTotal / 12);
     }
-    annualExpRet = c.annualExpensesRetirement;
-    annualExpNow = c.annualExpensesNow;
+    // Use phase P1 (first retirement year) as the headline "retirement expenses"
+    // representative when per-phase is active. In two-phase mode this equals
+    // annualExpensesRetirement (preserved exactly).
+    annualExpRet = expenseProfile.p1;
+    annualExpNow = expenseProfile.preFire;
     annualExpLean = c.annualExpensesLeanFire;
   } else {
     const s = STATE.finances.separate;
     investable = s.p1.investableAssets + s.p2.investableAssets;
-    monthlyContrib = effectiveMonthlyContrib(s.p1, "p1") + effectiveMonthlyContrib(s.p2, "p2");
-    annualExpRet = s.p1.annualExpensesRetirement + s.p2.annualExpensesRetirement;
-    annualExpNow = s.p1.annualExpensesNow + s.p2.annualExpensesNow;
+    p1Profile = resolveExpenseProfile(s.p1);
+    p2Profile = resolveExpenseProfile(s.p2);
+    expenseProfile = sumExpenseProfiles(p1Profile, p2Profile);
+    monthlyContrib = effectiveMonthlyContrib(s.p1, "p1", p1CashMortgageMonthly)
+                   + effectiveMonthlyContrib(s.p2, "p2", p2CashMortgageMonthly);
+    annualExpRet = expenseProfile.p1;
+    annualExpNow = expenseProfile.preFire;
     annualExpLean = s.p1.annualExpensesLeanFire + s.p2.annualExpensesLeanFire;
   }
 
@@ -5547,12 +6149,38 @@ function computeAll() {
                                + (couple ? (STATE.income.p2.otherRetirementIncomeAnnual || 0) : 0);
   const oaLumpSum55Total = cpfP1.oaAt55 + (cpfP2 ? cpfP2.oaAt55 : 0);
 
+  // v1.3.1 Path A extension: cash portion of mortgage is debited from the
+  // portfolio in retirement years (just like the CPF portion is debited via
+  // housingDeductionAnnual upstream). FIRE target + MC both need to know.
+  // Mortgage tenure is measured from today; remaining years from FIRE is
+  // tenure − (years until FIRE).
+  // (`_housingShares` + `cashMortgageAnnualTotal` were hoisted above so the
+  // monthlyContrib calc could subtract the cash share — v1.3.2.)
+  const mortgageTenure = _housingShares.monthlyPayment > 0 ? _housingShares.tenure : 0;
+  const yearsUntilFireCombined = couple
+    ? Math.min(STATE.profile.person1.fireAge - STATE.profile.person1.currentAge,
+               STATE.profile.person2.fireAge - STATE.profile.person2.currentAge)
+    : (STATE.profile.person1.fireAge - STATE.profile.person1.currentAge);
+  const mortgageActiveYearsFromFire = Math.max(0, mortgageTenure - Math.max(0, yearsUntilFireCombined));
+  // v1.3.2: pre-FIRE active years — MC subtracts mortgage from each accumulation
+  // year's contribution while active, then adds it back after the loan ends.
+  // Since `monthlyContrib` is already net of mortgage (today's reality), MC
+  // adds the cash mortgage BACK to `annualContribution` for years where the
+  // mortgage has ended but FIRE hasn't yet been reached.
+  const mortgageActivePreFireYears = Math.max(0, Math.min(mortgageTenure, Math.max(0, yearsUntilFireCombined)));
+
   const fire = FIRE.calculateMultiPhaseTarget({
     E, i, r,
     P_LIFE: cpfLifeAnnualTotal + otherIncomeAnnualTotal,
     W_OA: oaLumpSum55Total,
     FIRE_AGE: fireAge,
     LIFE_EXP: lifeExp,
+    cashMortgageAnnual: cashMortgageAnnualTotal,
+    mortgageActiveYearsFromFire,
+    // v1.4.0: per-phase expenses (today's $). In two-phase mode all three equal E.
+    E_p1: expenseProfile.p1,
+    E_p2: expenseProfile.p2,
+    E_p3: expenseProfile.p3,
   });
 
   // Net worth from INPUT balances (not post-year-1 projections)
@@ -5579,20 +6207,34 @@ function computeAll() {
     const p2p = STATE.profile.person2;
     const p1Other = STATE.income.p1.otherRetirementIncomeAnnual || 0;
     const p2Other = STATE.income.p2.otherRetirementIncomeAnnual || 0;
+    // Per-person cash mortgage burden — each pays their own share of the
+    // cash portion. Mortgage tenure measured from today.
+    const p1CashMortgageAnnual = _housingShares.p1CashMonthly * 12;
+    const p2CashMortgageAnnual = _housingShares.p2CashMonthly * 12;
+    const p1MortgageActiveYearsFromFire = Math.max(0, mortgageTenure - Math.max(0, p1p.fireAge - p1p.currentAge));
+    const p2MortgageActiveYearsFromFire = Math.max(0, mortgageTenure - Math.max(0, p2p.fireAge - p2p.currentAge));
+    // v1.4.0: each person's FIRE target uses their own per-phase profile
     const fp1 = FIRE.calculateMultiPhaseTarget({
-      E: s.p1.annualExpensesRetirement, i, r,
+      E: p1Profile.p1, i, r,
       P_LIFE: cpfP1.cpfLifeAnnual + p1Other,
       W_OA: cpfP1.oaAt55,
       FIRE_AGE: p1p.fireAge, LIFE_EXP: p1p.lifeExpectancy,
+      cashMortgageAnnual: p1CashMortgageAnnual,
+      mortgageActiveYearsFromFire: p1MortgageActiveYearsFromFire,
+      E_p1: p1Profile.p1, E_p2: p1Profile.p2, E_p3: p1Profile.p3,
     });
     const fp2 = FIRE.calculateMultiPhaseTarget({
-      E: s.p2.annualExpensesRetirement, i, r,
+      E: p2Profile.p1, i, r,
       P_LIFE: cpfP2.cpfLifeAnnual + p2Other,
       W_OA: cpfP2.oaAt55,
       FIRE_AGE: p2p.fireAge, LIFE_EXP: p2p.lifeExpectancy,
+      cashMortgageAnnual: p2CashMortgageAnnual,
+      mortgageActiveYearsFromFire: p2MortgageActiveYearsFromFire,
+      E_p1: p2Profile.p1, E_p2: p2Profile.p2, E_p3: p2Profile.p3,
     });
-    const effP1mc = effectiveMonthlyContrib(s.p1, "p1");
-    const effP2mc = effectiveMonthlyContrib(s.p2, "p2");
+    // v1.3.2: per-person savings rate also nets out their own cash mortgage share
+    const effP1mc = effectiveMonthlyContrib(s.p1, "p1", _housingShares.p1CashMonthly);
+    const effP2mc = effectiveMonthlyContrib(s.p2, "p2", _housingShares.p2CashMonthly);
     // Per-person safe targets (= deterministic × household buffer multiplier) —
     // consumed by Deeper Dive's status bar; per-person progress stays deterministic
     // for the Planner tab.
@@ -5623,6 +6265,18 @@ function computeAll() {
     monthlyContrib, annualExpRet, annualExpNow, annualExpLean,
     separateFire, combinedMilestones: null,
     firstYearFraction, returnSource,
+    // v1.3.1: cash mortgage info — reused by MC engines (lifetime chart + Safety Buffer)
+    cashMortgageAnnual: cashMortgageAnnualTotal,
+    mortgageActiveYearsFromFire,
+    // v1.3.2: pre-FIRE active years — MC adds cash mortgage BACK to annual
+    // contribution after the loan ends (monthlyContrib is already net of it).
+    mortgageActivePreFireYears,
+    // v1.4.0: per-phase expense profile (today's $). Household-level for both
+    // combined and separate modes; per-person profiles also exposed in separate
+    // mode for the YoY/MC paths that need per-person clocks.
+    expenseProfile,
+    p1ExpenseProfile: p1Profile,
+    p2ExpenseProfile: p2Profile,
   };
   // YoY projection becomes the single source of truth for downstream renderers
   // (status bar tiles + YoY table). Computed once per recompute cycle.
@@ -5686,6 +6340,46 @@ function _yearsToFireFromYoy(R, fireTotal) {
     prev = curr;
   }
   return null;
+}
+
+// Earliest age at which the user could *actually* retire — i.e. the first age A
+// (scanning from primaryCurrentAge forward) where the projected liquid portfolio
+// at A meets a FIRE target sized for retiring *at A* (not at the planned fireAge).
+//
+// Uses R.fire.assumptions to reconstruct the FIRE target for each candidate age,
+// substituting FIRE_AGE = A and recomputing mortgageActiveYearsFromFire (the
+// mortgage end age is invariant; only the years *remaining* at retirement change).
+//
+// Approximation: P_LIFE (CPF LIFE) and W_OA (OA at 55) are held fixed at their
+// planned-retirement-age values. At an earlier retirement the user has fewer CPF
+// contribution years → slightly smaller CPF benefit → the true earliest FIRE age
+// may be marginally later than displayed. Hence the "Est." prefix in the tile.
+//
+// Returns the number of years from today, or null if not reachable within the horizon.
+function _earliestFireYears(R, primaryCurrentAge) {
+  const base = R.fire.assumptions;
+  if (!base) return null;
+  // Mortgage end age is fixed regardless of when the user retires.
+  const mortgageEndAge = base.FIRE_AGE + (base.mortgageActiveYearsFromFire || 0);
+
+  // FIRE target for retiring at candidate age A (recalculates Y1/Y2/Y3 and mortgage window).
+  const targetAt = (A) => FIRE.calculateMultiPhaseTarget({
+    ...base,
+    FIRE_AGE: A,
+    mortgageActiveYearsFromFire: Math.max(0, mortgageEndAge - A),
+  }).total;
+
+  // Check current age first (portfolio = R.investable, no compounding yet).
+  if (R.investable >= targetAt(primaryCurrentAge)) return 0;
+
+  // Walk the YoY projection year by year (age1 is person 1's age at each row).
+  const yoy = R.yoy || [];
+  for (let i = 0; i < yoy.length; i++) {
+    const A = yoy[i].age1;
+    if (A == null || A > base.LIFE_EXP) break;
+    if (yoy[i].liquid >= targetAt(A)) return i + 1;  // integer years (good enough for display)
+  }
+  return null;  // portfolio never meets an age-appropriate FIRE target
 }
 
 function renderStatusBar(R) {
@@ -5790,11 +6484,54 @@ function renderStatusBar(R) {
     : `Age ${fireAgeForBar} → ${R.lifeExp}`) + bufferSuffix;
 
   // ── Years to FIRE tile ──────────────────────────────────────
-  document.getElementById("stat-years").textContent = yrsToFire == null ? "—" : Util.fmtYears(yrsToFire);
-  document.getElementById("stat-years-sub").textContent =
-    yrsToFire == null ? "Not reachable — adjust inputs"
-    : yrsToFire <= 0.1 ? "Already FIRE-ready"
-    : `by age ${Math.round(primaryCurrentAge + yrsToFire)}`;
+  // Four cases, in priority order:
+  //   A. Never reachable                          → "— / Not reachable"
+  //   B. Already at/past planned retirement age
+  //      AND portfolio ≥ target                   → "0 mo / Already FIRE-ready"
+  //   C. Portfolio already crossed the planned-
+  //      retirement target but user isn't there
+  //      yet — compute earliest actual FIRE age   → "X yr / Est. Earliest FIRE · age Y"
+  //   D. Normal forward-looking countdown         → "X yr / by age Y"
+  //
+  // Case C uses `_earliestFireYears` which rescans R.yoy with a per-age FIRE
+  // target (recomputed via R.fire.assumptions) so the tile shows the first age
+  // where the portfolio would genuinely sustain retirement, not just "when did
+  // it cross the planned-retirement milestone?"
+  const alreadyCrossed  = yrsToFire != null && yrsToFire <= 0.1;
+  const atRetirementAge = yearsUntilFireAge <= 0.5;
+
+  let yearsDisplay, yearsSubDisplay;
+  if (yrsToFire == null) {
+    yearsDisplay    = "—";
+    yearsSubDisplay = "Not reachable — adjust inputs";
+  } else if (alreadyCrossed && atRetirementAge) {
+    // At or past planned retirement age, portfolio meets the target — genuinely ready.
+    yearsDisplay    = "0 mo";
+    yearsSubDisplay = "Already FIRE-ready";
+  } else if (alreadyCrossed && !atRetirementAge) {
+    // Portfolio cleared the planned-retirement threshold before reaching retirement age.
+    // Find the earliest age where the portfolio could *actually* fund retirement.
+    const earlyYrs  = _earliestFireYears(R, primaryCurrentAge);
+    if (earlyYrs === 0) {
+      // Portfolio meets even a same-age FIRE target → could retire today.
+      yearsDisplay    = "0 mo";
+      yearsSubDisplay = "FIRE-ready now · consider retiring earlier";
+    } else if (earlyYrs != null && earlyYrs < yearsUntilFireAge - 0.5) {
+      const earliestAge = Math.round(primaryCurrentAge + earlyYrs);
+      yearsDisplay    = Util.fmtYears(earlyYrs);
+      yearsSubDisplay = `Est. Earliest FIRE · age ${earliestAge}`;
+    } else {
+      // Edge case: scan found no earlier-than-planned age (heavy mortgage, unusual inputs).
+      yearsDisplay    = Util.fmtYears(yearsUntilFireAge);
+      yearsSubDisplay = `Savings target met · On track for age ${fireAgeForBar}`;
+    }
+  } else {
+    // Normal forward-looking countdown.
+    yearsDisplay    = Util.fmtYears(yrsToFire);
+    yearsSubDisplay = `by age ${Math.round(primaryCurrentAge + yrsToFire)}`;
+  }
+  document.getElementById("stat-years").textContent     = yearsDisplay;
+  document.getElementById("stat-years-sub").textContent = yearsSubDisplay;
 
   // ── Portfolio at Retirement tile ────────────────────────────
   document.getElementById("stat-portfolio-ret").textContent = Util.fmtMoneyK(portfolioAtRet);
@@ -6488,6 +7225,13 @@ function _runMcForLifetimeChart(R) {
     sampleCount: _LIFETIME_MC_TRIALS,   // retain every trial → accurate p50
     strategyKey: "fixed",
     strategyParams: {},
+    // v1.3.1: cash mortgage debit during retirement years
+    cashMortgageAnnual: R.cashMortgageAnnual || 0,
+    mortgageActiveYearsFromFire: R.mortgageActiveYearsFromFire || 0,
+    // v1.3.2: pre-FIRE add-back
+    mortgageActivePreFireYears: R.mortgageActivePreFireYears || 0,
+    // v1.4.0: per-phase expense profile
+    expenseProfile: R.expenseProfile || null,
   };
   const result = Portfolio.runMonteCarloSimulation(ctx);
   return result && result.percentiles ? result.percentiles.p50 : null;
@@ -6778,6 +7522,8 @@ function computeMilestones(R) {
     E: R.annualExpLean, i: STATE.assumptions.inflationRate, r: nominalReturn,
     P_LIFE: R.cpfLifeAnnualTotal + R.otherIncomeAnnualTotal,
     W_OA: R.oaLumpSum55Total, FIRE_AGE: R.fireAge, LIFE_EXP: R.lifeExp,
+    cashMortgageAnnual: R.cashMortgageAnnual || 0,
+    mortgageActiveYearsFromFire: R.mortgageActiveYearsFromFire || 0,
   });
 
   // Investment income milestone: portfolio where real return = annual expenses
@@ -7051,6 +7797,28 @@ function computeYearlyProjection(R) {
   const expensesNow = R.annualExpNow;
   const expensesRet = R.annualExpRet;
   const swr = STATE.assumptions.swr;
+  // v1.4.0: per-phase profile lookup. In couple+separate mode each person has
+  // their own profile + clock; we sum their per-year expenses. In combined or
+  // single mode the household profile is keyed off age1 (p1's clock = household
+  // clock, matching the rest of YoY's conventions).
+  const fmodeYoy = STATE.finances.mode;
+  const useSeparateProfiles = couple && fmodeYoy === "separate" && R.p1ExpenseProfile && R.p2ExpenseProfile;
+  const householdProfile = R.expenseProfile || null;
+  const expenseAtYear = (a1, a2) => {
+    // Separate mode: each person owns their profile and toggles on their own fireAge.
+    if (useSeparateProfiles) {
+      const e1 = expenseAtAge(a1, p1.fireAge, R.p1ExpenseProfile);
+      const e2 = a2 != null ? expenseAtAge(a2, p2.fireAge, R.p2ExpenseProfile) : 0;
+      return e1 + e2;
+    }
+    // Combined / single mode: preserve v1.3.x semantics — preFire applies until
+    // the WHOLE household is retired (matches the savings/withdrawal switch
+    // below). Once both retired, the per-phase lookup kicks in keyed off age1.
+    const householdRetiredNow = (a1 >= p1.fireAge) && (!couple || (a2 != null && a2 >= p2.fireAge));
+    if (!householdRetiredNow) return householdProfile ? householdProfile.preFire : expensesNow;
+    return householdProfile ? expenseAtAge(a1, fireAge, householdProfile)
+                            : expensesRet;
+  };
   const propAppreciation = STATE.housing.propertyAppreciation || 0;
   const inflation = STATE.assumptions.inflationRate || 0;
   const realPropAppr = (1 + propAppreciation) / (1 + inflation) - 1;
@@ -7078,11 +7846,24 @@ function computeYearlyProjection(R) {
   // payment (depletion, or after age 65 when CPF tracking ends), the unpaid
   // portion must come from cash. Compute the nominal annual mortgage and the
   // remaining tenure so we can patch cash expenses for affected years.
-  const payViaCpf = !!STATE.housing.payMortgageViaCpf;
-  const mortgageNominalAnnual = payViaCpf
-    ? Mortgage.calcMonthlyPayment(STATE.housing.propertyLoan, STATE.housing.propertyRateAnnual, STATE.housing.propertyTenureYears) * 12
-    : 0;
-  const mortgageTenure = payViaCpf ? (STATE.housing.propertyTenureYears || 0) : 0;
+  // Per-person mortgage burden — both partners may pay via CPF OA at their
+  // own % of the household mortgage. `computeHousingCpfShares()` is the single
+  // source of truth (used by cpfInputsFor and renderHousing too).
+  //
+  // Engine policy (Path A, v1.3.0+):
+  //   • The user enters expenses EXCLUDING the mortgage payment entirely.
+  //   • The CPF engine auto-debits the CPF-funded portion from each person's
+  //     OA balance (or routes to cash via `oaHousingShortfall` on depletion).
+  //   • The deliberate cash portion (the part the user chose NOT to fund via
+  //     CPF) is auto-added to annual expenses here, while the mortgage is
+  //     still active. Same treatment regardless of the toggle — the toggle
+  //     only controls the CPF/cash split, not whether mortgage is tracked.
+  const housingShares = computeHousingCpfShares();
+  const hasMortgage = housingShares.monthlyPayment > 0;
+  const mortgageNominalAnnualP1 = housingShares.p1CpfAnnual;  // post-65 fallback target for CPF shortfall
+  const mortgageNominalAnnualP2 = housingShares.p2CpfAnnual;
+  const cashMortgageAnnual = (housingShares.p1CashMonthly + housingShares.p2CashMonthly) * 12;
+  const mortgageTenure = hasMortgage ? housingShares.tenure : 0;
 
   // ── Post-65 RA depletion (CPF LIFE drawdown) ──────────────────────
   // CPF policy model used here:
@@ -7146,24 +7927,44 @@ function computeYearlyProjection(R) {
     const empCpfReal = (empCpf1 + empCpf2) / Math.pow(1 + inflation, y);
     const netTakeHome = grossTotal - empCpfReal;
 
-    // ── Expenses (constant in real $) — pro-rated in year 0 ──────────
-    let expenses = (householdRetired ? expensesRet : expensesNow) * yearFraction;
+    // ── Expenses (real $, today's $) — pro-rated in year 0 ──────────
+    // v1.4.0: per-year lookup from the per-phase profile. In two-phase mode the
+    // profile collapses to (preFire = expensesNow, p1=p2=p3 = expensesRet) so
+    // behaviour matches v1.3.x. The boundary `householdRetired` still controls
+    // the savings/withdrawal switch (below) — the expense profile only sets the
+    // per-year baseline.
+    let expenses = expenseAtYear(age1, age2) * yearFraction;
 
-    // Mortgage-via-CPF shortfall: if OA can't cover the mortgage this year
-    // (depletion, or post-65 when CPF tracking has ended), the unpaid portion
-    // is paid from cash. Deflate the nominal shortfall to real $ and add to
-    // the year's cash expenses. Only applies while the mortgage is still active.
-    if (payViaCpf && y < mortgageTenure) {
-      let nominalShortfall = 0;
+    // Mortgage handling (Path A — engine auto-debits both CPF and cash):
+    //
+    //   (1) DELIBERATE CASH: the portion the user chose to pay from cash,
+    //       computed as (p1CashMonthly + p2CashMonthly) × 12. Always added
+    //       while mortgage is active, regardless of toggle state.
+    //   (2) OA SHORTFALL: the portion that was supposed to come from CPF OA
+    //       but couldn't because OA depleted (pre-65) or CPF tracking ended
+    //       (post-65). Routes to cash via the engine's existing shortfall
+    //       tracking. Sum across both partners.
+    //
+    // Deflated to today's $ before adding to expenses (which are real $).
+    if (hasMortgage && y < mortgageTenure) {
+      let nominalCash = cashMortgageAnnual * yearFraction;   // (1) deliberate cash
+
+      // (2) OA shortfall — P1 (snapshot up to age 65, full-share fallback past 65)
       if (c1 && c1.age === age1) {
-        // CPF snapshot available — use the tracked shortfall directly
-        nominalShortfall = c1.oaHousingShortfall || 0;
-      } else if (age1 > 65) {
-        // Past CPF tracking range — OA assumed depleted, full mortgage from cash
-        nominalShortfall = mortgageNominalAnnual * yearFraction;
+        nominalCash += c1.oaHousingShortfall || 0;
+      } else if (age1 > 65 && mortgageNominalAnnualP1 > 0) {
+        nominalCash += mortgageNominalAnnualP1 * yearFraction;
       }
-      if (nominalShortfall > 0) {
-        expenses += nominalShortfall / Math.pow(1 + inflation, y);
+      // (2) OA shortfall — P2 (only runs in couple mode where P2 has a CPF share)
+      if (couple && age2 != null && mortgageNominalAnnualP2 > 0) {
+        if (c2 && c2.age === age2) {
+          nominalCash += c2.oaHousingShortfall || 0;
+        } else if (age2 > 65) {
+          nominalCash += mortgageNominalAnnualP2 * yearFraction;
+        }
+      }
+      if (nominalCash > 0) {
+        expenses += nominalCash / Math.pow(1 + inflation, y);
       }
     }
 
@@ -7697,6 +8498,7 @@ n = months (tenure years × 12)</pre>
 }
 
 function recompute() {
+  syncHousingDerived();
   const R = computeAll();
   renderStatusBar(R);
   renderResults(R);
@@ -8250,6 +9052,42 @@ function runValidation() {
         `+$${expectedDelta.toFixed(2)}/mo from $12k AW`,
         `actual +$${actualDelta.toFixed(2)}/mo`, ok); }
 
+  // V40: Per-person housing CPF split — with 60/40 split + 100% CPF each,
+  // both partners' housingDeductionAnnual matches their share of the monthly
+  // mortgage × 12. Confirms the new split feature wires through correctly.
+  // All housing percentage fields are fractions in [0, 1].
+  { // Temporarily set up a known housing scenario
+    const prevSplit = STATE.housing.split;
+    const prevP1Cpf = STATE.housing.p1?.cpfPct;
+    const prevP2Cpf = STATE.housing.p2?.cpfPct;
+    const prevLoan = STATE.housing.propertyLoan;
+    const prevRate = STATE.housing.propertyRateAnnual;
+    const prevTenure = STATE.housing.propertyTenureYears;
+    STATE.housing.propertyLoan = 600000;
+    STATE.housing.propertyRateAnnual = 0.025;
+    STATE.housing.propertyTenureYears = 25;
+    STATE.housing.split = { p1Pct: 0.6, p2Pct: 0.4 };
+    STATE.housing.p1 = { cpfPct: 1.0 };
+    STATE.housing.p2 = { cpfPct: 1.0 };
+    const shares = computeHousingCpfShares();
+    const expectedP1Annual = shares.monthlyPayment * 12 * 0.60;
+    const expectedP2Annual = shares.monthlyPayment * 12 * 0.40;
+    const okP1 = Math.abs(shares.p1CpfAnnual - expectedP1Annual) < 1;
+    const okP2 = Math.abs(shares.p2CpfAnnual - expectedP2Annual) < 1;
+    const okSum = Math.abs(shares.totalCpfMonthly - shares.monthlyPayment) < 0.01;
+    const ok = okP1 && okP2 && okSum;
+    add("V40", "Housing CPF split: 60/40, both 100% CPF — each person's share matches",
+        `P1 = 60% × monthly × 12; P2 = 40% × monthly × 12; sum = monthly`,
+        `P1=${Util.fmtMoney(shares.p1CpfAnnual)} (exp ${Util.fmtMoney(expectedP1Annual)}), P2=${Util.fmtMoney(shares.p2CpfAnnual)} (exp ${Util.fmtMoney(expectedP2Annual)})`, ok);
+    // Restore prior state
+    STATE.housing.split = prevSplit;
+    STATE.housing.p1 = { cpfPct: prevP1Cpf };
+    STATE.housing.p2 = { cpfPct: prevP2Cpf };
+    STATE.housing.propertyLoan = prevLoan;
+    STATE.housing.propertyRateAnnual = prevRate;
+    STATE.housing.propertyTenureYears = prevTenure;
+  }
+
   const tbody = document.querySelector("#validation-table tbody");
   tbody.innerHTML = "";
   let allPass = true;
@@ -8354,6 +9192,7 @@ window.Strategies = Strategies;
 window.Util = Util;
 window.setState = setState;
 window.setStructural = setStructural;
+window.setExpenseMode = setExpenseMode;
 window.setTopTab = setTopTab;
 window.toggleSection = toggleSection;
 window.togglePhaseDetail = togglePhaseDetail;
@@ -8375,6 +9214,7 @@ window.applyAssetBreakdownToWeights = applyAssetBreakdownToWeights;
 window.setFireBuffer = setFireBuffer;
 window.findSafetyBuffer = findSafetyBuffer;
 window.setExcludeCpfHelp = setExcludeCpfHelp;
+window.toggleHousingCpf = toggleHousingCpf;
 
 // Info-tooltip tap-to-toggle for touch devices. Hover-only popovers are invisible
 // on touch — wire up a delegated click handler so tapping an .info-btn toggles
