@@ -1599,7 +1599,7 @@
 //   • Footer attribution
 //   • Update-available banner (compared against version.json fetched from the deployed site)
 // Keep in sync with version.json at the repo root.
-const VERSION = "1.4.2";
+const VERSION = "1.5.0";
 
 const DATA_SOURCES = {
   repo: "weih-gh/sg-retirement-planner",
@@ -2261,6 +2261,11 @@ const Util = {
     return `${h.toString().padStart(2, "0")}:${m} ${ampm}`;
   },
   approx(a, e, tol) { return Math.abs(a - e) <= tol; },
+  escapeHtml(s) {
+    return String(s == null ? "" : s)
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+  },
   deepGet(obj, path) { return path.split(".").reduce((o, k) => o == null ? undefined : o[k], obj); },
   deepSet(obj, path, value) {
     const keys = path.split(".");
@@ -2525,6 +2530,12 @@ const FIRE = (() => {
       // within the phase) instead of the single `E`. Defaults to `E` so callers
       // that don't care about per-phase get identical results to v1.3.x.
       E_p1 = E, E_p2 = E, E_p3 = E,
+      // v1.5.0: discrete one-off goals (today's $). Only post-FIRE goal-years
+      // count toward the deterministic target (pre-FIRE goals belong to
+      // accumulation, handled by the YoY + Monte-Carlo engines). Each goal's
+      // real cost escalates from today (`currentAge`) by its excess inflation
+      // over the global rate `i`, then is discounted at nominal r from FIRE.
+      oneOffGoals = [], currentAge = FIRE_AGE,
     } = inputs;
     const Y1 = Math.max(0, 55 - FIRE_AGE);
     const Y2 = (FIRE_AGE >= 65) ? 0 : 10;
@@ -2569,9 +2580,25 @@ const FIRE = (() => {
     }
     n3 += pvMortgageAtFire(Y1 + Y2, Y1 + Y2 + Y3);
 
-    return { n1, n2, n3, total: n1 + n2 + n3,
+    // One-off goals: PV at FIRE of each post-FIRE goal-year. Goals sit OUTSIDE
+    // the Math.max(0, … − P_LIFE/W_OA) logic — they're real outflows that
+    // CPF LIFE / OA-lump don't offset.
+    let nGoals = 0;
+    for (const g of (oneOffGoals || [])) {
+      const per = (g.amount || 0) / Math.max(1, g.years || 1);
+      if (per <= 0) continue;
+      const gi = (g.inflation != null ? g.inflation : i);
+      for (let A = (g.age || 0); A < (g.age || 0) + Math.max(1, g.years || 1); A++) {
+        if (A < FIRE_AGE || A > LIFE_EXP) continue;
+        const realFactor = Math.pow((1 + gi) / (1 + i), Math.max(0, A - currentAge));
+        const t = A - FIRE_AGE;
+        nGoals += per * realFactor * Math.pow(1 + i, t) / Math.pow(1 + r, t);
+      }
+    }
+
+    return { n1, n2, n3, nGoals, total: n1 + n2 + n3 + nGoals,
              assumptions: { E, E_p1, E_p2, E_p3, i, r, P_LIFE, W_OA, FIRE_AGE, LIFE_EXP, Y1, Y2, Y3,
-                            cashMortgageAnnual, mortgageActiveYearsFromFire } };
+                            cashMortgageAnnual, mortgageActiveYearsFromFire, oneOffGoals, currentAge } };
   }
 
   function calcPlanHorizon(profile) {
@@ -2778,6 +2805,11 @@ const Portfolio = (() => {
       // per-year base withdrawal switches across phases at 55 (P1→P2) and 65
       // (P2→P3). When absent, falls back to constant `annualExpense` (v1.3.x).
       expenseProfile = null,
+      // v1.5.0: discrete one-off goals (today's $). `goalInflationBase` is the
+      // age that anchors real escalation (today = person1.currentAge);
+      // `globalInflation` is the plan's CPI assumption. Pre-FIRE goals draw down
+      // accumulation; post-FIRE goals add to the withdrawal.
+      oneOffGoals = [], goalInflationBase = (currentAge ?? fireAge), globalInflation = 0,
     } = ctx;
 
     // Per-year withdrawal in real dollars (today's $)
@@ -2824,6 +2856,8 @@ const Portfolio = (() => {
           const contribThisYear = annualContribution
             + (mortgageEnded && cashMortgageAnnual > 0 ? cashMortgageAnnual : 0);
           portfolio += contribThisYear;
+          // Pre-FIRE one-off goals draw down accumulation directly.
+          portfolio -= oneOffGoalsAtAge(oneOffGoals, age, goalInflationBase, globalInflation);
           const r = phaseR.mean + phaseR.stdDev * gauss();
           portfolio *= (1 + r);
           continue;
@@ -2848,7 +2882,9 @@ const Portfolio = (() => {
         const yearsSinceFire = age - fireAge;
         const mortgageDue = (cashMortgageAnnual > 0 && yearsSinceFire < mortgageActiveYearsFromFire)
           ? cashMortgageAnnual : 0;
-        const netWithdraw = Math.max(0, grossNeed - offset) + mortgageDue;
+        // One-off goals are real outflows outside the CPF/other-income offset.
+        const goalDue = oneOffGoalsAtAge(oneOffGoals, age, goalInflationBase, globalInflation);
+        const netWithdraw = Math.max(0, grossNeed - offset) + mortgageDue + goalDue;
 
         // Withdraw first
         portfolio -= netWithdraw;
@@ -2931,6 +2967,8 @@ const Portfolio = (() => {
       mortgageActivePreFireYears = 0,
       // v1.4.0: per-phase expense profile (today's $)
       expenseProfile = null,
+      // v1.5.0: discrete one-off goals (today's $); see runMonteCarloSimulation.
+      oneOffGoals = [], goalInflationBase = startAge, globalInflation = 0,
     } = ctx;
     const baseFor = (age) => expenseProfile
       ? (age < 55 ? expenseProfile.p1 : age < 65 ? expenseProfile.p2 : expenseProfile.p3)
@@ -2962,6 +3000,8 @@ const Portfolio = (() => {
         const contribThisYear = annualContribution
           + (mortgageEnded && cashMortgageAnnual > 0 ? cashMortgageAnnual : 0);
         portfolio += contribThisYear;
+        // Pre-FIRE one-off goals draw down accumulation directly.
+        portfolio -= oneOffGoalsAtAge(oneOffGoals, age, goalInflationBase, globalInflation);
         portfolio *= (1 + r);
         continue;
       }
@@ -2981,7 +3021,8 @@ const Portfolio = (() => {
       const yearsSinceFire = age - fireAge;
       const mortgageDue = (cashMortgageAnnual > 0 && yearsSinceFire < mortgageActiveYearsFromFire)
         ? cashMortgageAnnual : 0;
-      const netWithdraw = Math.max(0, grossNeed - offset) + mortgageDue;
+      const goalDue = oneOffGoalsAtAge(oneOffGoals, age, goalInflationBase, globalInflation);
+      const netWithdraw = Math.max(0, grossNeed - offset) + mortgageDue + goalDue;
 
       portfolio -= netWithdraw;
       if (portfolio <= 0) { portfolio = 0; depleted = true; traj[y] = 0; continue; }
@@ -3381,18 +3422,23 @@ const DEFAULT_STATE = {
       // "go-go / slow-go / no-go" spending pattern across retirement.
       expenseMode: "twoPhase",
       expensesPerPhase: { preFire: 60000, p1: 60000, p2: 54000, p3: 45000 },
+      // v1.5.0: discrete future lump-sum expenses (today's $). Each goal:
+      // { name, age, amount, years, inflation }. Empty by default.
+      oneOffGoals: [],
     },
     separate: {
       p1: { investableAssets: 80000, monthlyContribution: 1200, monthlyContributionManual: false,
             annualExpensesNow: 30000, annualExpensesRetirement: 30000, annualExpensesLeanFire: 20000,
             assetBreakdown: { usEquity: 0, intlEquity: 0, intlBonds: 0, sgEquity: 0, commodities: 0, cash: 80000 },
             expenseMode: "twoPhase",
-            expensesPerPhase: { preFire: 30000, p1: 32000, p2: 30000, p3: 24000 } },
+            expensesPerPhase: { preFire: 30000, p1: 32000, p2: 30000, p3: 24000 },
+            oneOffGoals: [] },
       p2: { investableAssets: 70000, monthlyContribution: 800,  monthlyContributionManual: false,
             annualExpensesNow: 30000, annualExpensesRetirement: 24000, annualExpensesLeanFire: 16000,
             assetBreakdown: { usEquity: 0, intlEquity: 0, intlBonds: 0, sgEquity: 0, commodities: 0, cash: 70000 },
             expenseMode: "twoPhase",
-            expensesPerPhase: { preFire: 30000, p1: 26000, p2: 24000, p3: 20000 } },
+            expensesPerPhase: { preFire: 30000, p1: 26000, p2: 24000, p3: 20000 },
+            oneOffGoals: [] },
     },
   },
   assumptions: {
@@ -3688,6 +3734,34 @@ function setExpenseMode(basePath, newMode) {
     Util.deepSet(STATE, `${basePath}.expensesPerPhase`, { preFire: now, p1: ret, p2: ret, p3: ret });
   }
   Util.deepSet(STATE, `${basePath}.expenseMode`, newMode);
+  Storage.save();
+  renderExpenses();
+  try { recompute(); refreshComputed(); } catch (e) { console.error(e); }
+}
+
+// v1.5.0: One-off goals. Add/remove change the array's shape → re-render the
+// Expenses card. Field edits on existing goals go through setState (stable
+// index paths, no re-render → input focus preserved while typing). New goals
+// default to the slot owner's age + 5, $10k over 1 year, at the plan's CPI.
+function addOneOffGoal(basePath) {
+  const slot = Util.deepGet(STATE, basePath);
+  if (!slot) return;
+  if (!Array.isArray(slot.oneOffGoals)) slot.oneOffGoals = [];
+  const isP2 = /\.p2$/.test(basePath);
+  const ownerAge = isP2 ? STATE.profile.person2.currentAge : STATE.profile.person1.currentAge;
+  slot.oneOffGoals.push({
+    name: "", age: ownerAge + 5, amount: 10000, years: 1,
+    inflation: STATE.assumptions.inflationRate,
+  });
+  Storage.save();
+  renderExpenses();
+  try { recompute(); refreshComputed(); } catch (e) { console.error(e); }
+}
+
+function removeOneOffGoal(basePath, idx) {
+  const slot = Util.deepGet(STATE, basePath);
+  if (!slot || !Array.isArray(slot.oneOffGoals)) return;
+  slot.oneOffGoals.splice(idx, 1);
   Storage.save();
   renderExpenses();
   try { recompute(); refreshComputed(); } catch (e) { console.error(e); }
@@ -4048,6 +4122,79 @@ function _renderExpenseInputsForSlot(basePath, fireAge) {
     </div>`;
 }
 
+// v1.5.0: Render the One-Off Goals card for a finance slot — its own bubble,
+// separate from Expenses & Savings. Each goal is a discrete future lump-sum
+// expense in today's $: a name, the age it's incurred, the amount, an optional
+// "spread over N years", and a per-goal inflation rate (defaults to the plan's
+// CPI; escalates in real terms only by its excess over CPI). Add/Remove
+// re-render; per-field edits use setState with stable index paths so typing
+// never loses focus.
+function _renderOneOffGoalsCard(basePath, title) {
+  const slot = Util.deepGet(STATE, basePath) || {};
+  const goals = slot.oneOffGoals || [];
+  const globalInflation = STATE.assumptions.inflationRate || 0;
+  const cpiPct = (globalInflation * 100).toFixed(1);
+  const info = `
+    <span class="info-tooltip">
+      <div class="info-tooltip-title">One-off goals</div>
+      <div class="info-tooltip-note">Discrete future lump-sum expenses in <strong>today's dollars</strong> — a child's university fees, a wedding, a car, a renovation. Spread a big bill evenly over several years (e.g. $40k of fees over 4 years = $10k/yr). Each goal has its own inflation rate (default = the plan's ${cpiPct}% CPI); set it higher for education/healthcare goals that outpace general inflation. Pre-FIRE goals reduce that year's savings; post-FIRE goals raise the withdrawal.</div>
+    </span>`;
+
+  const rows = goals.map((g, idx) => {
+    const inflPct = ((g.inflation != null ? g.inflation : globalInflation) * 100);
+    return `
+    <div class="row" style="display:grid;grid-template-columns:1.7fr 0.8fr 1.2fr 0.9fr 1fr auto;gap:10px;align-items:end;margin-bottom:10px;">
+      <div class="field" style="margin:0;">
+        <label>Goal name</label>
+        <input type="text" class="input" placeholder="e.g. University" value="${Util.escapeHtml(g.name)}"
+               oninput="setState('${basePath}.oneOffGoals.${idx}.name', this.value)">
+      </div>
+      <div class="field" style="margin:0;">
+        <label>Age</label>
+        <input type="number" class="input" min="0" value="${g.age}"
+               oninput="setState('${basePath}.oneOffGoals.${idx}.age', +this.value)">
+      </div>
+      <div class="field" style="margin:0;">
+        <label>Amount</label>
+        <div class="input-prefix">
+          <span class="prefix">S$</span>
+          <input type="number" min="0" step="1000" value="${g.amount}"
+                 oninput="setState('${basePath}.oneOffGoals.${idx}.amount', +this.value)">
+        </div>
+      </div>
+      <div class="field" style="margin:0;">
+        <label>Over (yrs)</label>
+        <input type="number" class="input" min="1" value="${g.years}"
+               oninput="setState('${basePath}.oneOffGoals.${idx}.years', +this.value)">
+      </div>
+      <div class="field" style="margin:0;">
+        <label>Inflation %</label>
+        <div class="input-prefix">
+          <span class="prefix">%</span>
+          <input type="number" step="0.1" value="${inflPct}"
+                 oninput="setState('${basePath}.oneOffGoals.${idx}.inflation', +this.value / 100)">
+        </div>
+      </div>
+      <button type="button" class="btn-icon-remove" aria-label="Remove goal"
+              onclick="removeOneOffGoal('${basePath}', ${idx})"
+              style="height:42px;padding:0 12px;border:1px solid var(--border,#444);background:transparent;color:inherit;border-radius:8px;cursor:pointer;font-size:18px;line-height:1;">×</button>
+    </div>`;
+  }).join("");
+
+  const empty = goals.length === 0
+    ? `<div class="footnote" style="margin:6px 0 12px;">No one-off goals yet. Add anticipated future lump-sum expenses (university fees, a wedding, a car) in today's dollars.</div>`
+    : "";
+
+  return `
+    <div class="card">
+      <h3>${title}${_infoIcon(info)}</h3>
+      ${empty}
+      ${rows}
+      <button type="button" class="alloc-reset-btn" onclick="addOneOffGoal('${basePath}')"
+              style="margin-top:4px;margin-left:0;">+ Add goal</button>
+    </div>`;
+}
+
 function renderExpenses() {
   const couple = STATE.profile.coupleMode;
   const mode = STATE.finances.mode;
@@ -4099,7 +4246,7 @@ function renderExpenses() {
     const breakdown = `(${p1TH}${p2TH} take-home incl. AW/12) − ${exp} expenses${mortBit}`;
     inner = `
       <div class="card">
-        <h3>${couple ? "Household " : ""}Expenses &amp; Savings</h3>
+        <h3>Expenses &amp; Savings</h3>
         ${_renderExpenseInputsForSlot("finances.combined", householdFireAge)}
         ${oaCallout}
         <div class="row cols-3" style="margin-top:14px">
@@ -4112,6 +4259,7 @@ function renderExpenses() {
           })}
         </div>
       </div>
+      ${_renderOneOffGoalsCard("finances.combined", "One-Off Goals")}
     `;
   } else {
     const s = STATE.finances.separate;
@@ -4140,6 +4288,7 @@ function renderExpenses() {
           })}
         </div>
       </div>
+      ${_renderOneOffGoalsCard("finances.separate.p1", `${STATE.profile.person1.name} — One-Off Goals`)}
       <div class="card">
         <h3>${STATE.profile.person2.name} — Expenses &amp; Savings</h3>
         ${_renderExpenseInputsForSlot("finances.separate.p2", p2FireAge)}
@@ -4153,6 +4302,7 @@ function renderExpenses() {
           })}
         </div>
       </div>
+      ${_renderOneOffGoalsCard("finances.separate.p2", `${STATE.profile.person2.name} — One-Off Goals`)}
     `;
   }
   document.getElementById("section-expenses-body").innerHTML = inner;
@@ -4786,7 +4936,7 @@ function renderPortfolio() {
   if (!couple || mode === "combined") {
     invest = `
       <div class="card">
-        <h3>${couple ? "Household — " : ""}Investable assets</h3>
+        <h3>Investable assets</h3>
         <div class="footnote" style="margin-top:0;margin-bottom:6px">Enter current holdings per asset class. Use the <em>From $ inputs</em> button in Portfolio allocation below to auto-set %.</div>
         ${renderAssetBreakdown("finances.combined")}
         <div class="row cols-2" style="margin-top:18px">
@@ -5498,6 +5648,10 @@ function runSimulation() {
     // withdrawal in the drawdown loop. Falls back to constant annualExpense
     // when null (two-phase mode resolves to a flat profile so this is moot).
     expenseProfile: R.expenseProfile || null,
+    // v1.5.0: one-off goals (today's $), anchored to person1's age (today).
+    oneOffGoals: R.oneOffGoals || [],
+    goalInflationBase: STATE.profile.person1.currentAge,
+    globalInflation: R.globalInflation || 0,
   };
 
   const t0 = performance.now();
@@ -5987,6 +6141,25 @@ function effectiveMonthlyContrib(slot, pk, cashMortgageMonthly = 0) {
 // equal annualExpensesRetirement (current behaviour). In custom mode, each
 // phase reads from expensesPerPhase, falling back to the legacy fields when
 // a per-phase field is missing (handles loaded-from-old-state gracefully).
+// v1.5.0: Today's-$ (real) one-off goal spend at a given age. Each goal spreads
+// its amount evenly over `years` and escalates in real terms by the goal's
+// excess inflation over the global rate, anchored at `currentAge` (today). When
+// the goal's inflation == globalInfl (the default), the real factor is 1 and the
+// goal behaves as a flat today's-$ amount. Hoisted top-level → callable from the
+// Monte-Carlo IIFE module above.
+function oneOffGoalsAtAge(goals, age, currentAge, globalInfl) {
+  let sum = 0;
+  for (const g of (goals || [])) {
+    const amt = g.amount || 0, start = g.age || 0, yrs = Math.max(1, g.years || 1);
+    if (amt > 0 && age >= start && age < start + yrs) {
+      const gi = (g.inflation != null ? g.inflation : globalInfl);
+      const realFactor = Math.pow((1 + gi) / (1 + globalInfl), Math.max(0, age - currentAge));
+      sum += (amt / yrs) * realFactor;
+    }
+  }
+  return sum;
+}
+
 function resolveExpenseProfile(slot) {
   const legacyNow = slot.annualExpensesNow || 0;
   const legacyRet = slot.annualExpensesRetirement || 0;
@@ -6181,6 +6354,9 @@ function computeAll() {
     E_p1: expenseProfile.p1,
     E_p2: expenseProfile.p2,
     E_p3: expenseProfile.p3,
+    // v1.5.0: combined/single one-off goals, anchored to person1's age axis.
+    oneOffGoals: STATE.finances.combined.oneOffGoals || [],
+    currentAge: STATE.profile.person1.currentAge,
   });
 
   // Net worth from INPUT balances (not post-year-1 projections)
@@ -6222,6 +6398,7 @@ function computeAll() {
       cashMortgageAnnual: p1CashMortgageAnnual,
       mortgageActiveYearsFromFire: p1MortgageActiveYearsFromFire,
       E_p1: p1Profile.p1, E_p2: p1Profile.p2, E_p3: p1Profile.p3,
+      oneOffGoals: s.p1.oneOffGoals || [], currentAge: p1p.currentAge,
     });
     const fp2 = FIRE.calculateMultiPhaseTarget({
       E: p2Profile.p1, i, r,
@@ -6231,6 +6408,7 @@ function computeAll() {
       cashMortgageAnnual: p2CashMortgageAnnual,
       mortgageActiveYearsFromFire: p2MortgageActiveYearsFromFire,
       E_p1: p2Profile.p1, E_p2: p2Profile.p2, E_p3: p2Profile.p3,
+      oneOffGoals: s.p2.oneOffGoals || [], currentAge: p2p.currentAge,
     });
     // v1.3.2: per-person savings rate also nets out their own cash mortgage share
     const effP1mc = effectiveMonthlyContrib(s.p1, "p1", _housingShares.p1CashMonthly);
@@ -6277,6 +6455,21 @@ function computeAll() {
     expenseProfile,
     p1ExpenseProfile: p1Profile,
     p2ExpenseProfile: p2Profile,
+    // v1.5.0: one-off goals (today's $). `oneOffGoals` is the household list fed
+    // to the single-household MC (combined → combined goals; separate → p1+p2
+    // concatenated, p2 goals keyed to p2's age but run on p1's MC age axis — same
+    // approximation as the summed expenseProfile). Per-person lists drive the
+    // exact YoY projection. globalInflation = the plan's CPI assumption.
+    oneOffGoals: (couple && fmode === "separate")
+      ? ((STATE.finances.separate.p1.oneOffGoals || []).concat(STATE.finances.separate.p2.oneOffGoals || []))
+      : (STATE.finances.combined.oneOffGoals || []),
+    p1OneOffGoals: (couple && fmode === "separate")
+      ? (STATE.finances.separate.p1.oneOffGoals || [])
+      : (STATE.finances.combined.oneOffGoals || []),
+    p2OneOffGoals: (couple && fmode === "separate")
+      ? (STATE.finances.separate.p2.oneOffGoals || [])
+      : [],
+    globalInflation: STATE.assumptions.inflationRate,
   };
   // YoY projection becomes the single source of truth for downstream renderers
   // (status bar tiles + YoY table). Computed once per recompute cycle.
@@ -7232,6 +7425,10 @@ function _runMcForLifetimeChart(R) {
     mortgageActivePreFireYears: R.mortgageActivePreFireYears || 0,
     // v1.4.0: per-phase expense profile
     expenseProfile: R.expenseProfile || null,
+    // v1.5.0: one-off goals (today's $), anchored to person1's age (today).
+    oneOffGoals: R.oneOffGoals || [],
+    goalInflationBase: STATE.profile.person1.currentAge,
+    globalInflation: R.globalInflation || 0,
   };
   const result = Portfolio.runMonteCarloSimulation(ctx);
   return result && result.percentiles ? result.percentiles.p50 : null;
@@ -7966,6 +8163,21 @@ function computeYearlyProjection(R) {
       if (nominalCash > 0) {
         expenses += nominalCash / Math.pow(1 + inflation, y);
       }
+    }
+
+    // ── One-off goals (v1.5.0) — discrete lump-sum spend, today's $ ──
+    // Exact per-person: each goal is keyed to its owner's own age axis and
+    // escalates in real terms from that owner's current age. A lump is a lump —
+    // NOT prorated by yearFraction. Pre-FIRE goals reduce that year's savings;
+    // post-FIRE goals raise the withdrawal (both flow from `expenses` below).
+    {
+      const combinedGoals = STATE.finances.combined.oneOffGoals || [];
+      let goalSpend = useSeparateProfiles
+        ? oneOffGoalsAtAge(R.p1OneOffGoals, age1, startAge1, inflation)
+        : oneOffGoalsAtAge(combinedGoals, age1, startAge1, inflation);
+      if (useSeparateProfiles && age2 != null)
+        goalSpend += oneOffGoalsAtAge(R.p2OneOffGoals, age2, p2.currentAge, inflation);
+      expenses += goalSpend;
     }
 
     // ── Portfolio mechanics — return pro-rated in year 0 ─────────────
@@ -9088,6 +9300,43 @@ function runValidation() {
     STATE.housing.propertyTenureYears = prevTenure;
   }
 
+  // ── v1.5.0: One-Off Goals ────────────────────────────────────────────
+  {
+    const base = { E: 60000, i: 0.025, r: 0.05, FIRE_AGE: 45, LIFE_EXP: 90, currentAge: 45 };
+    // V41 — a post-FIRE goal adds its PV to the target. Goal inflation defaults
+    // to i (no excess escalation) and currentAge == FIRE_AGE → real factor 1.
+    const noGoals   = FIRE.calculateMultiPhaseTarget(base).total;
+    const withGoal  = FIRE.calculateMultiPhaseTarget({ ...base,
+      oneOffGoals: [{ age: 70, amount: 40000, years: 1 }] }).total;
+    const expV41 = 40000 * Math.pow(1.025 / 1.05, 70 - 45);
+    add("V41", "One-off goal: post-FIRE goal adds its PV to the FIRE target",
+        `Δtarget ≈ ${Util.fmtMoney(expV41)}`,
+        `Δtarget = ${Util.fmtMoney(withGoal - noGoals)}`,
+        Util.approx(withGoal - noGoals, expV41, 50));
+
+    // V42 — a pre-FIRE goal contributes 0 to the deterministic target.
+    const preFireGoal = FIRE.calculateMultiPhaseTarget({ ...base,
+      oneOffGoals: [{ age: 40, amount: 40000, years: 1 }] });
+    add("V42", "One-off goal: pre-FIRE goal adds 0 to the FIRE target (nGoals=0)",
+        `nGoals = 0`, `nGoals = ${Util.fmtMoney(preFireGoal.nGoals)}`,
+        Util.approx(preFireGoal.nGoals, 0, 1e-6));
+
+    // V43 — spread over N years, no excess inflation → flat per-year, then 0.
+    const spreadAt60 = oneOffGoalsAtAge([{ age: 60, amount: 40000, years: 4, inflation: 0.03 }], 60, 60, 0.03);
+    const spreadAt64 = oneOffGoalsAtAge([{ age: 60, amount: 40000, years: 4, inflation: 0.03 }], 64, 60, 0.03);
+    add("V43", "One-off goal: $40k spread over 4 yrs = $10k/yr in-window, $0 after",
+        `at 60 = $10,000; at 64 = $0`,
+        `at 60 = ${Util.fmtMoney(spreadAt60)}; at 64 = ${Util.fmtMoney(spreadAt64)}`,
+        Util.approx(spreadAt60, 10000, 0.01) && Util.approx(spreadAt64, 0, 1e-6));
+
+    // V44 — per-goal inflation escalates the real cost from currentAge.
+    const escAmt = oneOffGoalsAtAge([{ age: 60, amount: 10000, years: 1, inflation: 0.06 }], 60, 40, 0.03);
+    const expV44 = 10000 * Math.pow(1.06 / 1.03, 60 - 40);
+    add("V44", "One-off goal: per-goal inflation escalates real cost vs global CPI",
+        `≈ ${Util.fmtMoney(expV44)}`, `${Util.fmtMoney(escAmt)}`,
+        Util.approx(escAmt, expV44, 1));
+  }
+
   const tbody = document.querySelector("#validation-table tbody");
   tbody.innerHTML = "";
   let allPass = true;
@@ -9193,6 +9442,8 @@ window.Util = Util;
 window.setState = setState;
 window.setStructural = setStructural;
 window.setExpenseMode = setExpenseMode;
+window.addOneOffGoal = addOneOffGoal;
+window.removeOneOffGoal = removeOneOffGoal;
 window.setTopTab = setTopTab;
 window.toggleSection = toggleSection;
 window.togglePhaseDetail = togglePhaseDetail;
