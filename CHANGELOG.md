@@ -9,6 +9,28 @@ Versioning follows [Semantic Versioning](https://semver.org/):
 
 ---
 
+## [1.5.0] — 2026-06-01
+
+### Added
+- **One-Off Goals — discrete future lump-sum expenses.** A dedicated "One-Off Goals" card (below Expenses & Savings, per-person in Separate-finances mode) for anchoring anticipated one-off costs — a child's university fees, a wedding, a car, a renovation — into your plan. Each goal has:
+  - **Name** — free text (e.g. "University").
+  - **Age** — the age the expense is incurred.
+  - **Amount** — in **today's dollars**, exactly like every other expense field. The engine inflates it per year internally.
+  - **Spread over N years** — model a $40k university bill as $10k/yr across 4 years. The amount is divided evenly across the window.
+  - **Inflation %** — a per-goal inflation rate that **defaults to the plan's global CPI assumption**. Because the planner is a today's-$ (real-terms) model, a goal escalates in *real* terms only by its **excess** over general inflation: set it equal to CPI (the default) and the goal behaves as a flat today's-$ amount; set it to e.g. 6% against a 3% CPI and the goal grows ~2.9%/yr in real terms — useful for education / healthcare costs that historically outpace general inflation.
+- **Flows through every engine.** Goals are reflected in the deterministic **FIRE target** (post-FIRE goal-years only — pre-FIRE goals belong to accumulation), the **year-by-year lifetime projection** (all ages, exact per-person), and all **Monte-Carlo / historical** success-rate simulations (pre-FIRE goals draw down accumulation; post-FIRE goals raise the withdrawal). Goals sit outside the CPF-LIFE / OA-lump offset — they're real outflows those don't cancel.
+- **Per-person in couple + Separate-finances mode.** Each Expenses card owns its own goal list, keyed to that person's own age axis (matching the existing per-slot architecture).
+
+### Technical
+- New shared helper `oneOffGoalsAtAge(goals, age, currentAge, globalInfl)` (today's-$ spend at an age, with even spread + real excess-inflation escalation) and `Util.escapeHtml` (goal names are user text rendered into HTML). New `addOneOffGoal` / `removeOneOffGoal` actions (mirror `setExpenseMode`: save → `renderExpenses` → recompute). Field edits use `setState` with stable index paths → no card re-render → input focus preserved while typing.
+- Additive schema change — `oneOffGoals: []` added to all three finance slots. No `STATE_VERSION` bump: `deepMerge` returns the loaded array wholesale and all consumers read `slot.oneOffGoals || []` defensively, so old localStorage data and old shared URLs load cleanly with empty goal lists.
+- New validation tests **V41–V44** (FIRE-target PV of a post-FIRE goal; pre-FIRE goal contributes 0; even spread; per-goal inflation escalation).
+
+### Known limitation
+- In the year-by-year projection, a **pre-FIRE** goal larger than that year's income surplus is clamped by the existing `savings = max(0, …)` floor rather than drawing the shortfall from the portfolio. The "spread over N years" option keeps annual amounts small, so this rarely bites. (The Monte-Carlo engines do draw pre-FIRE goals directly from the accumulating portfolio.)
+
+---
+
 ## [1.4.2] — 2026-05-30
 
 ### Fixed
