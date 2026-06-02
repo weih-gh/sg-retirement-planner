@@ -724,6 +724,54 @@
   }
   .alloc-reset-btn:hover { color: var(--accent); background: var(--accent-soft); }
   .alloc-reset-btn:focus { outline: none; }
+
+  /* ── One-Off Goals: entry form + locked goal rows ─────────────── */
+  .goal-add-btn {
+    width: 100%; margin-top: 14px; padding: 12px 16px;
+    background: #E2ECDE; color: var(--text); font-weight: 600;
+    font-size: 13px; font-family: "Manrope", sans-serif;
+    /* The app's base `button` rule is display:inline-flex, so text-align has no
+       effect — center the flex content explicitly. */
+    text-align: center; display: flex; justify-content: center; align-items: center;
+    border: none; border-radius: 10px; cursor: pointer;
+    box-shadow: 0 1px 2px rgba(60, 50, 30, .05);
+    transition: background 0.15s;
+  }
+  .goal-add-btn:hover { background: #d4e2cf; }
+  .goal-add-btn:focus { outline: none; }
+  .goal-locked {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 12px; padding: 12px 14px; margin-bottom: 10px;
+    border: 1px solid var(--border); border-radius: 10px;
+    background: var(--accent-soft);
+  }
+  .goal-locked.is-editing { opacity: 0.5; }
+  .goal-locked .gl-name { font-weight: 600; color: var(--text); font-size: 14px; }
+  .goal-locked .gl-detail { color: var(--muted); font-size: 12px; margin-top: 2px; }
+  .goal-locked .gl-actions { display: flex; gap: 6px; flex-shrink: 0; }
+  .goal-row-btn {
+    background: none; border: 1px solid var(--border); padding: 5px 12px;
+    color: var(--muted); font-size: 11px; font-weight: 600;
+    letter-spacing: 0.04em; text-transform: uppercase;
+    cursor: pointer; font-family: "Manrope", sans-serif; border-radius: 7px;
+    transition: color 0.15s, background 0.15s, border-color 0.15s;
+  }
+  .goal-row-btn:hover { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
+  .goal-row-btn.danger:hover { color: #b4341f; border-color: #b4341f; background: rgba(180,52,31,.06); }
+  .goal-row-btn:focus { outline: none; }
+  .goal-form-actions { display: flex; gap: 10px; align-items: stretch; margin-top: 14px; }
+  .goal-form-actions .goal-add-btn,
+  .goal-form-actions .goal-cancel-btn { margin-top: 0; }
+  .goal-cancel-btn {
+    padding: 12px 16px; background: none;
+    border: 1px solid var(--border); border-radius: 10px; cursor: pointer;
+    color: var(--muted); font-size: 13px; font-weight: 600;
+    font-family: "Manrope", sans-serif; white-space: nowrap;
+    text-align: center; display: flex; justify-content: center; align-items: center;
+    transition: color 0.15s, border-color 0.15s;
+  }
+  .goal-cancel-btn:hover { color: var(--text); border-color: var(--muted); }
+  .goal-cancel-btn:focus { outline: none; }
   .alloc-stat {
     font-size: 11px; font-weight: 500; letter-spacing: 0.06em;
     padding: 4px 10px; border-radius: 6px;
@@ -1599,7 +1647,7 @@
 //   • Footer attribution
 //   • Update-available banner (compared against version.json fetched from the deployed site)
 // Keep in sync with version.json at the repo root.
-const VERSION = "1.5.0";
+const VERSION = "1.5.2";
 
 const DATA_SOURCES = {
   repo: "weih-gh/sg-retirement-planner",
@@ -2834,17 +2882,24 @@ const Portfolio = (() => {
 
       for (let y = 0; y < yearsCount; y++) {
         const age = startAge + y;
-        traj[y] = Math.max(0, portfolio);
 
         const phase = phaseForAge(age, fireAge);
         const phaseR = phaseReturns[phase] || phaseReturns.phase1;
 
         // OA flows happen regardless of working/retired status (CPF mechanics
-        // don't depend on whether the user is still earning income).
+        // don't depend on whether the user is still earning income). These are
+        // start-of-year CPF→portfolio transfers, so they're applied BEFORE the
+        // trajectory snapshot below — that keeps the OA-lump-at-55 (and the
+        // 56–64 auto-transfers) registering on the SAME age-tick as the CPF
+        // balance reduction, so the lifetime chart's investable spike and CPF
+        // dip line up instead of being one year apart (v1.5.1).
         if (age === 55 && oaLumpAt55 > 0) portfolio += oaLumpAt55;
         if (age >= 56 && age <= 64 && oaTransfersByAge && oaTransfersByAge[age]) {
           portfolio += oaTransfersByAge[age];
         }
+
+        // Snapshot net worth for this age AFTER the start-of-year OA inflows.
+        traj[y] = Math.max(0, portfolio);
 
         // ── Accumulation phase (pre-FIRE) ─────────────────────────
         if (age < fireAge) {
@@ -2981,15 +3036,19 @@ const Portfolio = (() => {
 
     for (let y = 0; y < yearsCount; y++) {
       const age = startAge + y;
-      traj[y] = Math.max(0, portfolio);
 
       const phase = phaseForAge(age, fireAge);
       const phaseWeights = allocations[phase] || allocations.phase1;
 
+      // Start-of-year OA→portfolio inflows applied BEFORE the trajectory
+      // snapshot, so the OA-lump-at-55 / 56–64 transfers register on the same
+      // age-tick as the CPF balance reduction (chart alignment, v1.5.1).
       if (age === 55 && oaLumpAt55 > 0) portfolio += oaLumpAt55;
       if (age >= 56 && age <= 64 && oaTransfersByAge && oaTransfersByAge[age]) {
         portfolio += oaTransfersByAge[age];
       }
+
+      traj[y] = Math.max(0, portfolio);
 
       const r = getHistoricalRealReturn(series, cpiSeries, yearSequence[y], phaseWeights);
 
@@ -3739,29 +3798,67 @@ function setExpenseMode(basePath, newMode) {
   try { recompute(); refreshComputed(); } catch (e) { console.error(e); }
 }
 
-// v1.5.0: One-off goals. Add/remove change the array's shape → re-render the
-// Expenses card. Field edits on existing goals go through setState (stable
-// index paths, no re-render → input focus preserved while typing). New goals
-// default to the slot owner's age + 5, $10k over 1 year, at the plan's CPI.
-function addOneOffGoal(basePath) {
+// v1.5.2: One-off goals are composed in a transient entry form and only
+// ingested into the planner (STATE + engine) when the user clicks "Add goal".
+// `commitOneOffGoal` reads the form inputs from the DOM, validates, and either
+// appends a new goal or overwrites the one being edited. Edit/Cancel manage the
+// re-edit lifecycle; Delete removes a committed goal. All four re-render the
+// Expenses card (array shape changes), and recompute so the planner updates.
+function _readGoalForm(basePath) {
+  const safeId = basePath.replace(/\./g, "_");
+  const $ = (suffix) => document.getElementById(`goal-form-${suffix}-${safeId}`);
+  const name = ($("name")?.value || "").trim();
+  const age = Math.max(0, Math.round(+($("age")?.value) || 0));
+  const amount = Math.max(0, +($("amount")?.value) || 0);
+  const years = Math.max(1, Math.round(+($("years")?.value) || 1));
+  const inflRaw = $("infl")?.value;
+  const inflation = (inflRaw == null || inflRaw === "")
+    ? (STATE.assumptions.inflationRate || 0)
+    : (+inflRaw / 100);
+  return { name, age, amount, years, inflation };
+}
+
+function commitOneOffGoal(basePath) {
   const slot = Util.deepGet(STATE, basePath);
   if (!slot) return;
+  const goal = _readGoalForm(basePath);
+  // A goal with no money has no effect — guide the user instead of ingesting it.
+  if (!(goal.amount > 0)) { showToast("Enter an amount above S$0 for this goal."); return; }
   if (!Array.isArray(slot.oneOffGoals)) slot.oneOffGoals = [];
-  const isP2 = /\.p2$/.test(basePath);
-  const ownerAge = isP2 ? STATE.profile.person2.currentAge : STATE.profile.person1.currentAge;
-  slot.oneOffGoals.push({
-    name: "", age: ownerAge + 5, amount: 10000, years: 1,
-    inflation: STATE.assumptions.inflationRate,
-  });
+  const editIdx = _goalEditIndex[basePath];
+  if (editIdx != null && editIdx >= 0 && editIdx < slot.oneOffGoals.length) {
+    slot.oneOffGoals[editIdx] = goal;   // save edit in place (preserves order)
+  } else {
+    slot.oneOffGoals.push(goal);        // commit a brand-new goal
+  }
+  _goalEditIndex[basePath] = null;
+  _goalDraft[basePath] = _defaultGoalDraft(basePath);  // reset the entry form
   Storage.save();
   renderExpenses();
   try { recompute(); refreshComputed(); } catch (e) { console.error(e); }
+}
+
+function editOneOffGoal(basePath, idx) {
+  const slot = Util.deepGet(STATE, basePath);
+  if (!slot || !Array.isArray(slot.oneOffGoals) || !slot.oneOffGoals[idx]) return;
+  _goalDraft[basePath] = { ...slot.oneOffGoals[idx] };  // seed the form
+  _goalEditIndex[basePath] = idx;
+  renderExpenses();  // no recompute — editing a draft must not touch the engine
+}
+
+function cancelOneOffGoalEdit(basePath) {
+  _goalEditIndex[basePath] = null;
+  _goalDraft[basePath] = _defaultGoalDraft(basePath);
+  renderExpenses();
 }
 
 function removeOneOffGoal(basePath, idx) {
   const slot = Util.deepGet(STATE, basePath);
   if (!slot || !Array.isArray(slot.oneOffGoals)) return;
   slot.oneOffGoals.splice(idx, 1);
+  // Editing indices are invalidated by the splice — drop back to compose mode.
+  _goalEditIndex[basePath] = null;
+  _goalDraft[basePath] = _defaultGoalDraft(basePath);
   Storage.save();
   renderExpenses();
   try { recompute(); refreshComputed(); } catch (e) { console.error(e); }
@@ -4122,76 +4219,130 @@ function _renderExpenseInputsForSlot(basePath, fireAge) {
     </div>`;
 }
 
+// v1.5.2: Transient draft state for the One-Off Goals entry form. NOT persisted
+// and NOT fed to the engine — a goal only affects the planner once the user
+// commits it via "Add goal". `_goalDraft[basePath]` holds the values the entry
+// form renders with; `_goalEditIndex[basePath]` is the committed-goal index
+// currently being re-edited (null = composing a brand-new goal).
+const _goalDraft = {};
+const _goalEditIndex = {};
+
+function _defaultGoalDraft(basePath) {
+  const isP2 = /\.p2$/.test(basePath);
+  const ownerAge = isP2 ? STATE.profile.person2.currentAge : STATE.profile.person1.currentAge;
+  return { name: "", age: ownerAge + 5, amount: 10000, years: 1, inflation: STATE.assumptions.inflationRate };
+}
+function _getGoalDraft(basePath) {
+  if (!_goalDraft[basePath]) _goalDraft[basePath] = _defaultGoalDraft(basePath);
+  return _goalDraft[basePath];
+}
+
 // v1.5.0: Render the One-Off Goals card for a finance slot — its own bubble,
 // separate from Expenses & Savings. Each goal is a discrete future lump-sum
 // expense in today's $: a name, the age it's incurred, the amount, an optional
 // "spread over N years", and a per-goal inflation rate (defaults to the plan's
-// CPI; escalates in real terms only by its excess over CPI). Add/Remove
-// re-render; per-field edits use setState with stable index paths so typing
-// never loses focus.
+// CPI; escalates in real terms only by its excess over CPI).
+//
+// v1.5.2: committed goals render as LOCKED summary rows (Edit / Delete); a new
+// goal is composed in the entry form below and only ingested into the planner
+// on "Add goal". Editing a locked goal swaps that row for the inline form.
 function _renderOneOffGoalsCard(basePath, title) {
   const slot = Util.deepGet(STATE, basePath) || {};
   const goals = slot.oneOffGoals || [];
   const globalInflation = STATE.assumptions.inflationRate || 0;
   const cpiPct = (globalInflation * 100).toFixed(1);
+  const editIdx = _goalEditIndex[basePath];
   const info = `
     <span class="info-tooltip">
       <div class="info-tooltip-title">One-off goals</div>
       <div class="info-tooltip-note">Discrete future lump-sum expenses in <strong>today's dollars</strong> — a child's university fees, a wedding, a car, a renovation. Spread a big bill evenly over several years (e.g. $40k of fees over 4 years = $10k/yr). Each goal has its own inflation rate (default = the plan's ${cpiPct}% CPI); set it higher for education/healthcare goals that outpace general inflation. Pre-FIRE goals reduce that year's savings; post-FIRE goals raise the withdrawal.</div>
     </span>`;
 
+  // Committed goals → locked rows. The one being edited is replaced by the
+  // inline entry form (so position is preserved).
   const rows = goals.map((g, idx) => {
+    if (editIdx === idx) return _renderOneOffGoalForm(basePath, "edit");
     const inflPct = ((g.inflation != null ? g.inflation : globalInflation) * 100);
+    const inflStr = (Math.round(inflPct * 10) / 10).toString();
+    const spread = (g.years || 1) > 1 ? ` · over ${g.years} yrs` : "";
     return `
-    <div class="row" style="display:grid;grid-template-columns:1.7fr 0.8fr 1.2fr 0.9fr 1fr auto;gap:10px;align-items:end;margin-bottom:10px;">
-      <div class="field" style="margin:0;">
-        <label>Goal name</label>
-        <input type="text" class="input" placeholder="e.g. University" value="${Util.escapeHtml(g.name)}"
-               oninput="setState('${basePath}.oneOffGoals.${idx}.name', this.value)">
+    <div class="goal-locked">
+      <div class="gl-info">
+        <div class="gl-name">${Util.escapeHtml(g.name) || "Untitled goal"}</div>
+        <div class="gl-detail">Age ${g.age || 0} · S$${(g.amount || 0).toLocaleString("en-SG")}${spread} · ${inflStr}% inflation</div>
       </div>
-      <div class="field" style="margin:0;">
-        <label>Age</label>
-        <input type="number" class="input" min="0" value="${g.age}"
-               oninput="setState('${basePath}.oneOffGoals.${idx}.age', +this.value)">
+      <div class="gl-actions">
+        <button type="button" class="goal-row-btn" onclick="editOneOffGoal('${basePath}', ${idx})">Edit</button>
+        <button type="button" class="goal-row-btn danger" onclick="removeOneOffGoal('${basePath}', ${idx})">Delete</button>
       </div>
-      <div class="field" style="margin:0;">
-        <label>Amount</label>
-        <div class="input-prefix">
-          <span class="prefix">S$</span>
-          <input type="number" min="0" step="1000" value="${g.amount}"
-                 oninput="setState('${basePath}.oneOffGoals.${idx}.amount', +this.value)">
-        </div>
-      </div>
-      <div class="field" style="margin:0;">
-        <label>Over (yrs)</label>
-        <input type="number" class="input" min="1" value="${g.years}"
-               oninput="setState('${basePath}.oneOffGoals.${idx}.years', +this.value)">
-      </div>
-      <div class="field" style="margin:0;">
-        <label>Inflation %</label>
-        <div class="input-prefix">
-          <span class="prefix">%</span>
-          <input type="number" step="0.1" value="${inflPct}"
-                 oninput="setState('${basePath}.oneOffGoals.${idx}.inflation', +this.value / 100)">
-        </div>
-      </div>
-      <button type="button" class="btn-icon-remove" aria-label="Remove goal"
-              onclick="removeOneOffGoal('${basePath}', ${idx})"
-              style="height:42px;padding:0 12px;border:1px solid var(--border,#444);background:transparent;color:inherit;border-radius:8px;cursor:pointer;font-size:18px;line-height:1;">×</button>
     </div>`;
   }).join("");
 
   const empty = goals.length === 0
-    ? `<div class="footnote" style="margin:6px 0 12px;">No one-off goals yet. Add anticipated future lump-sum expenses (university fees, a wedding, a car) in today's dollars.</div>`
+    ? `<div class="footnote" style="margin:6px 0 14px;">No one-off goals yet. Add anticipated future lump-sum expenses (university fees, a wedding, a car) in today's dollars.</div>`
     : "";
+
+  // The new-goal entry form is shown only when not mid-edit of an existing goal.
+  const newForm = (editIdx == null) ? _renderOneOffGoalForm(basePath, "new") : "";
 
   return `
     <div class="card">
       <h3>${title}${_infoIcon(info)}</h3>
       ${empty}
       ${rows}
-      <button type="button" class="alloc-reset-btn" onclick="addOneOffGoal('${basePath}')"
-              style="margin-top:4px;margin-left:0;">+ Add goal</button>
+      ${newForm}
+    </div>`;
+}
+
+// v1.5.2: The One-Off Goals entry form (field grid + commit button). `mode` is
+// "new" (compose + Add goal) or "edit" (re-editing an existing goal → Save +
+// Cancel). Inputs carry stable IDs and are read from the DOM on commit, so the
+// draft never touches STATE or the engine until the user confirms.
+function _renderOneOffGoalForm(basePath, mode) {
+  const safeId = basePath.replace(/\./g, "_");
+  const d = _getGoalDraft(basePath);
+  const inflPct = ((d.inflation != null ? d.inflation : (STATE.assumptions.inflationRate || 0)) * 100);
+  const inflStr = (Math.round(inflPct * 100) / 100).toString();
+  const commitLabel = mode === "edit" ? "Save goal" : "Add goal";
+  const cancelBtn = mode === "edit"
+    ? `<button type="button" class="goal-cancel-btn" onclick="cancelOneOffGoalEdit('${basePath}')">Cancel</button>`
+    : "";
+  const actionsClass = mode === "edit" ? "goal-form-actions" : "";
+  return `
+    <div class="goal-entry-form">
+      <div class="row" style="display:grid;grid-template-columns:1.7fr 0.8fr 1.2fr 0.9fr 1fr;gap:10px;align-items:end;">
+        <div class="field" style="margin:0;">
+          <label>Goal name</label>
+          <input type="text" class="input" id="goal-form-name-${safeId}" placeholder="e.g. University"
+                 value="${Util.escapeHtml(d.name)}">
+        </div>
+        <div class="field" style="margin:0;">
+          <label>Age</label>
+          <input type="number" class="input" id="goal-form-age-${safeId}" min="0" value="${d.age}">
+        </div>
+        <div class="field" style="margin:0;">
+          <label>Amount</label>
+          <div class="input-prefix">
+            <span class="prefix">S$</span>
+            <input type="number" id="goal-form-amount-${safeId}" min="0" step="1000" value="${d.amount}">
+          </div>
+        </div>
+        <div class="field" style="margin:0;">
+          <label>Over (yrs)</label>
+          <input type="number" class="input" id="goal-form-years-${safeId}" min="1" value="${d.years}">
+        </div>
+        <div class="field" style="margin:0;">
+          <label>Inflation %</label>
+          <div class="input-prefix">
+            <span class="prefix">%</span>
+            <input type="number" id="goal-form-infl-${safeId}" step="0.1" value="${inflStr}">
+          </div>
+        </div>
+      </div>
+      <div class="${actionsClass}">
+        <button type="button" class="goal-add-btn" onclick="commitOneOffGoal('${basePath}')">${commitLabel}</button>
+        ${cancelBtn}
+      </div>
     </div>`;
 }
 
@@ -9337,6 +9488,31 @@ function runValidation() {
         Util.approx(escAmt, expV44, 1));
   }
 
+  // ── v1.5.1: OA-lump-at-55 chart alignment ────────────────────────────
+  // The OA lump is a start-of-year CPF→portfolio transfer, so it must register
+  // on the age-55 trajectory tick (same age the CPF balance drops), not age 56.
+  // Deterministic single trial: zero returns/contributions isolate the lump.
+  {
+    const ctx = {
+      startingPortfolio: 500000, currentAge: 50, fireAge: 70, lifeExp: 60,
+      annualExpense: 0, swr: 0.04, annualContribution: 0,
+      phaseReturns: {
+        preFire: { mean: 0, stdDev: 0 }, phase1: { mean: 0, stdDev: 0 },
+        phase2: { mean: 0, stdDev: 0 }, phase3: { mean: 0, stdDev: 0 },
+      },
+      oaLumpAt55: 100000, oaTransfersByAge: new Array(100).fill(0),
+      cpfLifeAnnual: 0, otherIncomeAnnual: 0,
+      trials: 1, sampleCount: 1, strategyKey: "fixed",
+    };
+    const res = Portfolio.runMonteCarloSimulation(ctx);
+    const tr = (res.sampleTrials && res.sampleTrials[0]) || [];
+    const at54 = tr[4], at55 = tr[5];  // startAge=50 → idx 4 = age 54, idx 5 = age 55
+    add("V45", "OA-lump-at-55 registers on the age-55 trajectory tick (chart alignment)",
+        `age54=$500,000, age55=$600,000`,
+        `age54=${Util.fmtMoney(at54)}, age55=${Util.fmtMoney(at55)}`,
+        Util.approx(at54, 500000, 1) && Util.approx(at55, 600000, 1));
+  }
+
   const tbody = document.querySelector("#validation-table tbody");
   tbody.innerHTML = "";
   let allPass = true;
@@ -9442,7 +9618,9 @@ window.Util = Util;
 window.setState = setState;
 window.setStructural = setStructural;
 window.setExpenseMode = setExpenseMode;
-window.addOneOffGoal = addOneOffGoal;
+window.commitOneOffGoal = commitOneOffGoal;
+window.editOneOffGoal = editOneOffGoal;
+window.cancelOneOffGoalEdit = cancelOneOffGoalEdit;
 window.removeOneOffGoal = removeOneOffGoal;
 window.setTopTab = setTopTab;
 window.toggleSection = toggleSection;

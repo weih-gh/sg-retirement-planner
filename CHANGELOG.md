@@ -9,6 +9,26 @@ Versioning follows [Semantic Versioning](https://semver.org/):
 
 ---
 
+## [1.5.2] — 2026-06-02
+
+### Changed
+- **One-Off Goals now use a confirm-to-add flow.** Previously each "+ Add goal" click immediately inserted a live, editable goal into the planner, so it was unclear whether a goal had actually been counted. Goals are now **composed in an entry form and only ingested into the planner when you click "Add goal."** Committed goals appear as **locked summary rows** ("University · Age 65 · S$60,000 · over 3 yrs · 5% inflation") with **Edit** and **Delete** buttons. Editing a goal swaps its row for the inline form (with **Save goal** / **Cancel**) and preserves its position; nothing recomputes until you save. This makes it obvious which goals are part of the plan and lets you draft one without it affecting the FIRE number, lifetime chart, or success rate until confirmed.
+
+### Technical
+- New transient, non-persisted draft state (`_goalDraft` / `_goalEditIndex`, keyed by finance-slot path) backs the entry form; it never touches `STATE` or the engine. New actions `commitOneOffGoal` (validates amount > 0, appends or saves-in-place), `editOneOffGoal`, `cancelOneOffGoalEdit`, and an updated `removeOneOffGoal`. The old `addOneOffGoal` action was removed. Form inputs carry stable IDs and are read from the DOM on commit.
+
+---
+
+## [1.5.1] — 2026-06-02
+
+### Fixed
+- **"Net worth over a lifetime" chart — the OA-lump-at-55 spike and the CPF dip now line up on the same age.** The investable line is the Monte-Carlo median trajectory; it was recorded at the *start* of each year, *before* the start-of-year OA→portfolio inflows were applied — so the OA lump withdrawn at 55 (and any 56–64 auto-transfers) showed up on the investable line one year late (a spike at 55→56) while the CPF line correctly dropped at 54→55. The trajectory snapshot is now taken *after* the start-of-year OA inflows in both Monte-Carlo engines (`runMonteCarloSimulation` and `_runHistoricalTrajectory`), so the dip and spike occur on the same age-tick. Withdrawal/return ordering and the success-rate calculation (which uses the final-year balance) are unchanged; only the year a CPF→portfolio transfer is *recorded* in the trajectory moved.
+
+### Technical
+- New validation test **V45** — deterministic single trial (zero returns/contributions) asserting the OA lump registers on the age-55 trajectory tick (age 54 = $500k, age 55 = $600k), not age 56.
+
+---
+
 ## [1.5.0] — 2026-06-01
 
 ### Added
