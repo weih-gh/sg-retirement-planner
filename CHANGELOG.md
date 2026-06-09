@@ -9,6 +9,16 @@ Versioning follows [Semantic Versioning](https://semver.org/):
 
 ---
 
+## [1.5.3] — 2026-06-02
+
+### Fixed
+- **Fractional mortgage tenure no longer produces a spurious expense bump in the payoff year.** With a non-integer remaining tenure (e.g. 19.5 years), the CPF engine was requesting a *full* year of mortgage payment in the final year even though only a partial year (here, half) remained. When that over-request exceeded the OA available in the payoff year, the excess was routed to cash, surfacing as a one-year jump in expenses/withdrawals in the Year-by-Year table and lifetime chart. The engine now requests only the remaining tenure fraction in the final year (and the Year-by-Year deliberate-cash mortgage line is scaled the same way). New validation test **V46**.
+
+### Changed
+- **One-Off Goals entry form now starts blank.** Previously the form pre-filled a `$10,000 / 1-year` default at `your age + 5`, which made it easy to accidentally commit a phantom goal. Name, age, amount, and "over (yrs)" now start empty (with placeholder hints); inflation still defaults to the plan's CPI. Committing is rejected (with a prompt) unless both an age and an amount above S$0 are entered, so an unedited or half-filled form can't slip a stray goal into the plan.
+
+---
+
 ## [1.5.2] — 2026-06-02
 
 ### Changed
