@@ -1647,7 +1647,7 @@
 //   • Footer attribution
 //   • Update-available banner (compared against version.json fetched from the deployed site)
 // Keep in sync with version.json at the repo root.
-const VERSION = "1.5.2";
+const VERSION = "1.5.3";
 
 const DATA_SOURCES = {
   repo: "weih-gh/sg-retirement-planner",
@@ -2465,7 +2465,12 @@ const CPF = (() => {
       // further OA deductions. When OA can't cover the requested payment, track
       // the shortfall — the homeowner must pay that portion from cash.
       const mortgageActive = (age - currentAge) < housingTenureYears;
-      const requestedHousingThisYear = mortgageActive ? (housingDeductionAnnual * yearFraction) : 0;
+      // v1.5.3: the final mortgage year can be partial (e.g. tenure 19.5 → the
+      // last year is only half a year of payments). Request just the remaining
+      // fraction, otherwise the engine over-debits OA / reports a spurious cash
+      // shortfall in the payoff year (a one-year expense bump in the YoY/chart).
+      const tenureFractionThisYear = Math.max(0, Math.min(1, housingTenureYears - (age - currentAge)));
+      const requestedHousingThisYear = mortgageActive ? (housingDeductionAnnual * yearFraction * tenureFractionThisYear) : 0;
       const oaHousingDeduction = Math.min(state.oa, requestedHousingThisYear);
       state.oa -= oaHousingDeduction;
       const oaHousingShortfall = requestedHousingThisYear - oaHousingDeduction;
@@ -3822,7 +3827,9 @@ function commitOneOffGoal(basePath) {
   const slot = Util.deepGet(STATE, basePath);
   if (!slot) return;
   const goal = _readGoalForm(basePath);
-  // A goal with no money has no effect — guide the user instead of ingesting it.
+  // Require the goal-defining fields before ingesting — the form starts blank,
+  // so this guards against committing an empty/partly-filled entry.
+  if (!(goal.age > 0))    { showToast("Enter the age this goal is incurred."); return; }
   if (!(goal.amount > 0)) { showToast("Enter an amount above S$0 for this goal."); return; }
   if (!Array.isArray(slot.oneOffGoals)) slot.oneOffGoals = [];
   const editIdx = _goalEditIndex[basePath];
@@ -4228,9 +4235,11 @@ const _goalDraft = {};
 const _goalEditIndex = {};
 
 function _defaultGoalDraft(basePath) {
-  const isP2 = /\.p2$/.test(basePath);
-  const ownerAge = isP2 ? STATE.profile.person2.currentAge : STATE.profile.person1.currentAge;
-  return { name: "", age: ownerAge + 5, amount: 10000, years: 1, inflation: STATE.assumptions.inflationRate };
+  // v1.5.3: the entry form starts BLANK so an unedited/partly-filled form can't
+  // be committed as a phantom goal. Name/age/amount/years are empty (rendered
+  // with placeholders); inflation keeps the plan's CPI as a sensible documented
+  // default. commitOneOffGoal rejects the form unless age and amount are filled.
+  return { name: "", age: "", amount: "", years: "", inflation: STATE.assumptions.inflationRate };
 }
 function _getGoalDraft(basePath) {
   if (!_goalDraft[basePath]) _goalDraft[basePath] = _defaultGoalDraft(basePath);
@@ -4318,18 +4327,18 @@ function _renderOneOffGoalForm(basePath, mode) {
         </div>
         <div class="field" style="margin:0;">
           <label>Age</label>
-          <input type="number" class="input" id="goal-form-age-${safeId}" min="0" value="${d.age}">
+          <input type="number" class="input" id="goal-form-age-${safeId}" min="0" placeholder="e.g. 50" value="${d.age}">
         </div>
         <div class="field" style="margin:0;">
           <label>Amount</label>
           <div class="input-prefix">
             <span class="prefix">S$</span>
-            <input type="number" id="goal-form-amount-${safeId}" min="0" step="1000" value="${d.amount}">
+            <input type="number" id="goal-form-amount-${safeId}" min="0" step="1000" placeholder="e.g. 40000" value="${d.amount}">
           </div>
         </div>
         <div class="field" style="margin:0;">
           <label>Over (yrs)</label>
-          <input type="number" class="input" id="goal-form-years-${safeId}" min="1" value="${d.years}">
+          <input type="number" class="input" id="goal-form-years-${safeId}" min="1" placeholder="1" value="${d.years}">
         </div>
         <div class="field" style="margin:0;">
           <label>Inflation %</label>
@@ -8295,7 +8304,13 @@ function computeYearlyProjection(R) {
     //
     // Deflated to today's $ before adding to expenses (which are real $).
     if (hasMortgage && y < mortgageTenure) {
-      let nominalCash = cashMortgageAnnual * yearFraction;   // (1) deliberate cash
+      // v1.5.3: scale the final (possibly partial) mortgage year by its
+      // remaining tenure fraction — matches the CPF engine, so a fractional
+      // tenure (e.g. 19.5 yrs) doesn't charge a full year of cash in the
+      // half-year payoff year. (OA-shortfall below is already correctly scaled
+      // by the engine.)
+      const tenureFracThisYear = Math.max(0, Math.min(1, mortgageTenure - y));
+      let nominalCash = cashMortgageAnnual * yearFraction * tenureFracThisYear;   // (1) deliberate cash
 
       // (2) OA shortfall — P1 (snapshot up to age 65, full-share fallback past 65)
       if (c1 && c1.age === age1) {
@@ -9511,6 +9526,23 @@ function runValidation() {
         `age54=$500,000, age55=$600,000`,
         `age54=${Util.fmtMoney(at54)}, age55=${Util.fmtMoney(at55)}`,
         Util.approx(at54, 500000, 1) && Util.approx(at55, 600000, 1));
+  }
+
+  // ── v1.5.3: fractional final mortgage year ───────────────────────────
+  // A fractional tenure (e.g. 19.5 yrs) must request only the remaining
+  // fraction in the final year — not a full year, which over-debits OA and can
+  // surface a spurious cash shortfall (a one-year expense bump in the YoY/chart).
+  {
+    const out = CPF.simulateCpfAccumulation({
+      currentAge: 32, grossSalaryAnnual: 0, salaryGrowth: 0,
+      oaBalance: 5000000, saBalance: 0, maBalance: 0,   // ample OA → always covers
+      housingDeductionAnnual: 12000, housingTenureYears: 19.5, fireAge: 999,
+    }, 2026);
+    const ded = (a) => { const s = out.yearlySnapshots.find(x => x.age === a); return s ? s.oaHousingDeduction : null; };
+    add("V46", "Mortgage final partial year (tenure 19.5) requests half, not a full year",
+        `age50=$12,000 (full), age51=$6,000 (half), age52=$0`,
+        `age50=${Util.fmtMoney(ded(50))}, age51=${Util.fmtMoney(ded(51))}, age52=${Util.fmtMoney(ded(52))}`,
+        Util.approx(ded(50), 12000, 1) && Util.approx(ded(51), 6000, 1) && Util.approx(ded(52), 0, 1));
   }
 
   const tbody = document.querySelector("#validation-table tbody");
