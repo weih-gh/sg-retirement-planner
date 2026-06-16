@@ -9,6 +9,21 @@ Versioning follows [Semantic Versioning](https://semver.org/):
 
 ---
 
+## [1.6.0] — 2026-06-02
+
+### Added
+- **Snapshot dating ("Figures as of").** The planner now stores the date your financial figures are accurate as of, and anchors all time-dependent math to it instead of live "today". Previously, first-year pro-rating used the current calendar date *every time the plan was opened*, so a plan built in June silently shrank its first-year contributions/income/expenses as the year went on — the projection changed with no input change. Now:
+  - First-year pro-rating, the CPF calendar year (OW/AW ceilings, BHS & retirement-sum escalation), and the year-by-year labels all key off the stored **as-of date**, so reopening the plan keeps the projection stable.
+  - The as-of date **auto-advances to today** whenever you edit a current-position figure — investable assets / asset breakdown, CPF balances (OA/SA/MA), current income (gross + AW), monthly contribution, current annual expenses, or property value/loan. Scenario/forecast inputs (inflation, returns, SWR, FIRE/life age, retirement & LeanFIRE expenses, allocation %, growth rates, one-off goals, UI) do **not** re-anchor it.
+  - A new **"Figures as of"** date control at the **top of the planner** (in the config row, to the right of *Planning for* / *Household finances*) shows the anchor and lets you view, correct, or backdate it; a hint flags when the snapshot is from a past year.
+- **Meaningful "Saved" indicator.** The save status now reflects the last *financial* edit with its date ("Saved 16 Jun 2026, 4:05 PM" same day, "Updated 10 Jun 2026" earlier) instead of re-stamping to the current time on every reload.
+
+### Technical
+- New `STATE.meta = { asOfDate, lastFinancialEdit }` (additive — no `STATE_VERSION` bump; `deepMerge` + new `reconcileLegacyAsOfDate` seed it to today for pre-1.6.0 saves and share links). New `planAnchorDate()` / `planAnchorYear()`, `isFinancialPositionPath()`, `touchAsOfDate()`, `setAsOfDate()`; `Util.firstYearFraction()` now takes an optional anchor date and `Util.todayISODate()` was added. New validation tests **V47** (deterministic anchored proration) and **V48** (re-stamp classifier).
+- Methodology panel updated: first-year pro-rating is now day-precise and documented as anchoring to the as-of date (the old `(12 − currentMonth + 1)/12` formula was a stale approximation).
+
+---
+
 ## [1.5.3] — 2026-06-02
 
 ### Fixed

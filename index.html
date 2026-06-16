@@ -280,6 +280,18 @@
   }
   .toggle-group button:hover:not(.active) { color: var(--text); background: rgba(226, 236, 222, .5); }
 
+  /* "Figures as of" — a plain date input in the config row (pill-height match
+     intentionally not enforced; native date inputs don't size like text pills). */
+  .asof-input {
+    box-sizing: border-box; padding: 9px 14px;
+    background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px;
+    color: var(--text); font-size: 13px; font-weight: 500;
+    font-family: "Manrope", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    box-shadow: 0 1px 2px rgba(60, 50, 30, .05); outline: none;
+    transition: border-color .15s, background .15s;
+  }
+  .asof-input:focus { border-color: var(--accent); background: var(--panel); }
+
   /* ── Person tabs ──────────────────────────────────────────── */
   .person-tabs {
     /* Sits inside the Profile & Income section body — tighter top margin
@@ -1647,7 +1659,7 @@
 //   • Footer attribution
 //   • Update-available banner (compared against version.json fetched from the deployed site)
 // Keep in sync with version.json at the repo root.
-const VERSION = "1.5.3";
+const VERSION = "1.6.0";
 
 const DATA_SOURCES = {
   repo: "weih-gh/sg-retirement-planner",
@@ -2265,15 +2277,28 @@ const Util = {
     for (const band of table) if (age <= band.maxAge) return band;
     return table[table.length - 1];
   },
-  // Fraction of the current calendar year remaining (based on today's date).
+  // Fraction of the calendar year remaining from a given anchor date.
   // Used to pro-rate first-year income and CPF contributions so the planner
-  // only counts contributions for months remaining from today to year-end.
-  firstYearFraction() {
-    const now = new Date();
-    const yearStart = new Date(now.getFullYear(), 0, 1).getTime();
-    const yearEnd   = new Date(now.getFullYear() + 1, 0, 1).getTime();
-    const elapsed = (now.getTime() - yearStart) / (yearEnd - yearStart);
+  // only counts contributions for the months left in that year.
+  // v1.6.0: takes an explicit anchor (the plan's as-of date) instead of always
+  // using live "today" — otherwise the projection silently re-prorates every
+  // time the plan is reopened. Defaults to now for back-compat / tests.
+  firstYearFraction(asOf = new Date()) {
+    const yearStart = new Date(asOf.getFullYear(), 0, 1).getTime();
+    const yearEnd   = new Date(asOf.getFullYear() + 1, 0, 1).getTime();
+    const elapsed = (asOf.getTime() - yearStart) / (yearEnd - yearStart);
     return Math.max(0, Math.min(1, 1 - elapsed));
+  },
+  // Local-timezone YYYY-MM-DD (not UTC — avoids an off-by-one near midnight).
+  todayISODate(d = new Date()) {
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${d.getFullYear()}-${m}-${day}`;
+  },
+  // Compact human date, e.g. "16 Jun 2026".
+  fmtDate(d = new Date()) {
+    const mon = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+    return `${d.getDate()} ${mon[d.getMonth()]} ${d.getFullYear()}`;
   },
   fmtMoney(n) {
     if (n == null || isNaN(n)) return "—";
@@ -3586,6 +3611,15 @@ const DEFAULT_STATE = {
     p2: { cpfPct: 0.0 },
   },
   ui: { activePersonTab: "p1", activeTopTab: "planner", yoyTab: "financial" },
+  // v1.6.0: snapshot dating. `asOfDate` (YYYY-MM-DD) is the date the financial
+  // figures are declared accurate as of. It anchors first-year proration AND
+  // the engine's calendar year, instead of live "today" — which previously made
+  // the plan silently re-prorate every time it was reopened. Auto-stamped to
+  // today whenever a financial-position field changes (isFinancialPositionPath →
+  // touchAsOfDate) and user-editable via the "Figures as of" control.
+  // `lastFinancialEdit` records the wall-clock of that last meaningful edit and
+  // drives the save indicator. Legacy plans are seeded by reconcileLegacyAsOfDate.
+  meta: { asOfDate: Util.todayISODate(), lastFinancialEdit: new Date().toISOString() },
 };
 
 let STATE = structuredClone(DEFAULT_STATE);
@@ -3702,7 +3736,7 @@ const Storage = {
       const fromHash = loadFromUrlHash();
       if (fromHash) {
         const migrated = migrateState(fromHash);
-        if (migrated) { STATE = deepMerge(structuredClone(DEFAULT_STATE), migrated); reconcileLegacyInvestable(); reconcileLegacyCpfHelpFlag(migrated); reconcileLegacyPortfolioStrategy(migrated); reconcileLegacyHousingSplit(migrated); return "hash"; }
+        if (migrated) { STATE = deepMerge(structuredClone(DEFAULT_STATE), migrated); reconcileLegacyInvestable(); reconcileLegacyCpfHelpFlag(migrated); reconcileLegacyPortfolioStrategy(migrated); reconcileLegacyHousingSplit(migrated); reconcileLegacyAsOfDate(); return "hash"; }
       }
     } catch (e) { console.warn("Hash load failed:", e); }
     try {
@@ -3710,7 +3744,7 @@ const Storage = {
       if (raw) {
         const obj = JSON.parse(raw);
         const migrated = migrateState(obj);
-        if (migrated) { STATE = deepMerge(structuredClone(DEFAULT_STATE), migrated); reconcileLegacyInvestable(); reconcileLegacyCpfHelpFlag(migrated); reconcileLegacyPortfolioStrategy(migrated); reconcileLegacyHousingSplit(migrated); return "localstorage"; }
+        if (migrated) { STATE = deepMerge(structuredClone(DEFAULT_STATE), migrated); reconcileLegacyInvestable(); reconcileLegacyCpfHelpFlag(migrated); reconcileLegacyPortfolioStrategy(migrated); reconcileLegacyHousingSplit(migrated); reconcileLegacyAsOfDate(); return "localstorage"; }
       }
     } catch (e) { console.warn("LocalStorage load failed:", e); }
     return null;
@@ -3768,11 +3802,62 @@ function loadFromUrlHash() {
    7. ACTIONS
    ════════════════════════════════════════════════════════════════════════ */
 
+// v1.6.0: the plan's time anchor. `asOfDate` is when the financial figures were
+// declared true; everything time-dependent (proration, CPF calendar year, YoY
+// labels) keys off it instead of live "today", so reopening the plan doesn't
+// silently change the projection. Falls back to today if meta is missing.
+function planAnchorDate() {
+  const s = STATE.meta && STATE.meta.asOfDate;
+  const d = s ? new Date(s + "T00:00:00") : new Date();
+  return isNaN(d.getTime()) ? new Date() : d;
+}
+function planAnchorYear() { return planAnchorDate().getFullYear(); }
+
+// Paths that represent the user's CURRENT financial position (stocks + current
+// flows). Editing one means "my figures are now accurate as of today", so it
+// re-stamps the as-of date. Assumptions, ages, retirement/lean expenses,
+// allocation %, growth rates, one-off goals and UI state are scenario/forecast
+// inputs and deliberately do NOT re-anchor the plan.
+function isFinancialPositionPath(path) {
+  return (
+    /^finances\.(combined|separate\.p[12])\.investableAssets$/.test(path) ||
+    /^finances\.(combined|separate\.p[12])\.assetBreakdown\./.test(path) ||
+    /^finances\.(combined|separate\.p[12])\.monthlyContribution$/.test(path) ||
+    /^finances\.(combined|separate\.p[12])\.annualExpensesNow$/.test(path) ||
+    /^income\.p[12]\.(grossAnnual|additionalWagesAnnual)$/.test(path) ||
+    /^cpf\.p[12]\.(oa|sa|ma)Balance$/.test(path) ||
+    /^housing\.(propertyValue|propertyLoan)$/.test(path)
+  );
+}
+
+// Stamp the snapshot as "current as of today" on a financial-position edit.
+// Day-granular, so repeated edits in one session are idempotent. A manual date
+// picked in the control is transient — a later balance edit re-stamps to today.
+function touchAsOfDate() {
+  if (!STATE.meta) STATE.meta = {};
+  STATE.meta.asOfDate = Util.todayISODate();
+  STATE.meta.lastFinancialEdit = new Date().toISOString();
+}
+
 function setState(path, value) {
   if (typeof value === "number" && isNaN(value)) return;
   Util.deepSet(STATE, path, value);
+  if (isFinancialPositionPath(path)) touchAsOfDate();
   Storage.save();
   try { recompute(); refreshComputed(); } catch (e) { console.error(e); }
+}
+
+// v1.6.0: explicit user override of the as-of date (the "Figures as of" control).
+// Sets the snapshot date without touching lastFinancialEdit — this is a
+// declaration about the figures, not a fresh edit of them.
+function setAsOfDate(value) {
+  if (!value) return;
+  if (!STATE.meta) STATE.meta = {};
+  STATE.meta.asOfDate = value;
+  Storage.save();
+  // Re-render the config row so the stale-year hint reflects the new date;
+  // a date pick is discrete (onchange), so there's no focus to preserve.
+  try { renderConfigBlocks(); recompute(); refreshComputed(); } catch (e) { console.error(e); }
 }
 
 function setStructural(path, value, ...rerenders) {
@@ -3876,7 +3961,16 @@ function setSaveStatus(status) {
   const txt = document.getElementById("save-text");
   if (!ind || !txt) return;
   ind.className = "save-indicator " + status;
-  if (status === "saved") txt.textContent = "Saved " + Util.fmtTime();
+  if (status === "saved") {
+    // v1.6.0: reflect the last MEANINGFUL (financial-position) edit, not the
+    // moment of save/reload — so reopening the plan no longer fakes a fresh
+    // timestamp. Always show the date; add the time only for same-day edits.
+    const iso = STATE.meta && STATE.meta.lastFinancialEdit;
+    const d = iso ? new Date(iso) : new Date();
+    txt.textContent = (Util.todayISODate(d) === Util.todayISODate())
+      ? `Saved ${Util.fmtDate(d)}, ${Util.fmtTime(d)}`
+      : `Updated ${Util.fmtDate(d)}`;
+  }
   else if (status === "unsaved") txt.textContent = "Unsaved";
   else if (status === "error") txt.textContent = "Save error";
 }
@@ -4054,6 +4148,7 @@ function renderConfigBlocks() {
                   onclick="setStructural('finances.mode', 'separate', renderConfigBlocks, renderExpenses, renderPortfolio)">Separate</button>
         </div>
       </div>` : ""}
+      ${_renderAsOfControl()}
     </div>
   `;
 }
@@ -4718,6 +4813,15 @@ function migrateAssetKeys() {
   }
 }
 
+// v1.6.0: state saved before snapshot-dating has no meta.asOfDate. Seed it to
+// today on first load — preserving the pre-1.6.0 behaviour at that moment
+// (proration as of today), after which the anchor is frozen and stable.
+function reconcileLegacyAsOfDate() {
+  if (!STATE.meta) STATE.meta = {};
+  if (!STATE.meta.asOfDate) STATE.meta.asOfDate = Util.todayISODate();
+  if (!STATE.meta.lastFinancialEdit) STATE.meta.lastFinancialEdit = new Date().toISOString();
+}
+
 // One-time reconciliation for state saved before the breakdown became authoritative:
 // if breakdown sums to 0 but investableAssets > 0, dump the legacy total into cash.
 function reconcileLegacyInvestable() {
@@ -5086,6 +5190,33 @@ function refreshSwrSlider() {
   slider.style.setProperty("--pct", Math.max(0, Math.min(100, ((clamped - min) / (max - min)) * 100)) + "%");
   const span = document.getElementById("val-in-assumptions-swr");
   if (span) span.textContent = swrPct.toFixed(1);
+}
+
+// v1.6.0: the "Figures as of" control — a plan-wide snapshot date that anchors
+// first-year proration and the engine's calendar year. Rendered as a config
+// block in the top row (to the right of Planning-for / Household toggles) so
+// it's visible immediately. Auto-advances to today when a balance/income/
+// expense is edited; user can view, correct, or backdate it.
+function _renderAsOfControl() {
+  const asOf = (STATE.meta && STATE.meta.asOfDate) || Util.todayISODate();
+  const anchorYear = parseInt(String(asOf).slice(0, 4), 10);
+  const nowYear = new Date().getFullYear();
+  const stale = Number.isFinite(anchorYear) && anchorYear < nowYear;
+  const info = `
+    <span class="info-tooltip">
+      <div class="info-tooltip-title">Figures as of</div>
+      <div class="info-tooltip-note">The date your balances, income and expenses are accurate as of — it sets how the first projected year is pro-rated. Auto-updates to today when you edit a balance, income or expense; change it here to backdate a snapshot.</div>
+    </span>`;
+  const staleHint = stale
+    ? `<div class="hint" style="color:#b4731f;margin-top:8px;">${nowYear - anchorYear} year(s) old — edit a figure or set a new date to re-anchor.</div>`
+    : "";
+  return `
+    <div class="config-block">
+      <div class="label">Figures as of${_infoIcon(info)}</div>
+      <input type="date" class="asof-input" id="asof-date-input"
+             value="${asOf}" onchange="setAsOfDate(this.value)">
+      ${staleHint}
+    </div>`;
 }
 
 function renderPortfolio() {
@@ -6075,6 +6206,13 @@ function renderFanChart(result) {
    ════════════════════════════════════════════════════════════════════════ */
 
 function refreshComputed() {
+  // v1.6.0: keep the "Figures as of" date input in sync when a financial-position
+  // edit auto-advances the snapshot date (setState doesn't re-render the card).
+  const asOfInput = document.getElementById("asof-date-input");
+  if (asOfInput && STATE.meta && STATE.meta.asOfDate && asOfInput.value !== STATE.meta.asOfDate) {
+    asOfInput.value = STATE.meta.asOfDate;
+  }
+
   // RSTU tax relief hints
   for (const p of ["p1", "p2"]) {
     const el = document.getElementById(`display-rstu-${p}`);
@@ -6254,7 +6392,7 @@ function calcNetMonthlyTakeHome(pk) {
   const profKey = pk === "p1" ? "person1" : "person2";
   const age = STATE.profile[profKey].currentAge;
   const inc = STATE.income[pk];
-  const year = new Date().getFullYear();
+  const year = planAnchorYear();   // v1.6.0: CPF ceiling keyed to the plan's as-of year
   const owMonthlyCeiling = CPF.getOwCeiling(year);
   const owAnnualCeiling  = owMonthlyCeiling * 12;
   const awAnnualCeiling  = CONSTANTS.cpf.awAnnualCeiling;
@@ -6366,10 +6504,12 @@ function computeAll() {
   // Investable totals are derived from per-asset breakdowns (single source of truth).
   syncInvestableFromBreakdown();
 
-  const currentYear = new Date().getFullYear();
+  // v1.6.0: anchor calendar year + first-year proration to the plan's as-of
+  // date, not live "today" — so reopening the plan doesn't shift the projection.
+  const currentYear = planAnchorYear();
   const couple = STATE.profile.coupleMode;
   const fmode = STATE.finances.mode;
-  const firstYearFraction = Util.firstYearFraction();
+  const firstYearFraction = Util.firstYearFraction(planAnchorDate());
 
   const cpfInputsFor = (pk) => {
     const profKey = pk === "p1" ? "person1" : "person2";
@@ -7894,7 +8034,7 @@ function computeMilestones(R) {
   // the FRS cap that the auto-transfer applies). MA is intentionally excluded — it
   // never flows into RA at 55 and is reserved for medical expenses.
   const p2p = couple ? STATE.profile.person2 : null;
-  const currentYearForCpf = new Date().getFullYear();
+  const currentYearForCpf = planAnchorYear();   // v1.6.0: as-of year
   const yrsTo55_p1 = Math.max(0, 55 - p1.currentAge);
   const yrsTo55_p2 = couple ? Math.max(0, 55 - p2p.currentAge) : 0;
   const escFactor = (yrs) => Math.pow(1 + CONSTANTS.cpf.retirementSumEscalation, yrs);
@@ -8131,7 +8271,7 @@ function renderResults(R) {
 // CPF snapshots come from the engine for ages currentAge → 65; ages 66+ hold
 // OA/SA/MA at their age-65 values and replace RA with CPF LIFE monthly payout.
 function computeYearlyProjection(R) {
-  const currentYear = new Date().getFullYear();
+  const currentYear = planAnchorYear();   // v1.6.0: year-0 label = as-of year (matches proration)
   const couple = STATE.profile.coupleMode;
   const p1 = STATE.profile.person1;
   const p2 = STATE.profile.person2;
@@ -8864,10 +9004,10 @@ n = months (tenure years × 12)</pre>
       <div class="card" id="m-prorate">
         <h3>First-year pro-rating</h3>
         <div class="def-card-sub">Methodology</div>
-        <p>When the planner is opened partway through a calendar year, the first year of the projection only counts the remaining months. Pro-rate fraction:</p>
-        <pre class="def-formula">firstYearFraction = (12 − currentMonth + 1) / 12</pre>
-        <p>Applied to: wage-based CPF contributions, voluntary top-ups, housing deductions, CPF interest, income, expenses, and portfolio returns — all scaled by the remaining-year fraction for year 0 only.</p>
-        <span class="def-srcref">Util.firstYearFraction</span>
+        <p>The first projected year only counts the portion of the calendar year remaining from your plan's <strong>as-of date</strong> (the "Figures as of" date in Portfolio &amp; Returns — when your balances, income and expenses were declared accurate). Day-precise pro-rate fraction:</p>
+        <pre class="def-formula">firstYearFraction = (days left in as-of year) ÷ (days in that year)</pre>
+        <p>Applied to: wage-based CPF contributions, voluntary top-ups, housing deductions, CPF interest, income, expenses, and portfolio returns — all scaled by the remaining-year fraction for year 0 only. Anchoring to the as-of date (rather than live "today") keeps the projection stable when you reopen the plan; it re-anchors only when you edit a balance/income/expense or set a new date.</p>
+        <span class="def-srcref">Util.firstYearFraction · planAnchorDate</span>
       </div>
 
     </div>`;
@@ -9545,6 +9685,34 @@ function runValidation() {
         Util.approx(ded(50), 12000, 1) && Util.approx(ded(51), 6000, 1) && Util.approx(ded(52), 0, 1));
   }
 
+  // ── v1.6.0: as-of-date anchoring ─────────────────────────────────────
+  // First-year proration anchors to a supplied date, deterministically — it no
+  // longer drifts with the live clock when the plan is reopened.
+  {
+    const janFirst = Util.firstYearFraction(new Date(2026, 0, 1));   // whole year ahead
+    const decLast  = Util.firstYearFraction(new Date(2026, 11, 31)); // ~1 day left
+    add("V47", "First-year proration anchors to a given date (stable, not live today)",
+        `Jan 1 → 1.000, Dec 31 → ${(1 / 365).toFixed(3)}`,
+        `Jan 1 → ${janFirst.toFixed(3)}, Dec 31 → ${decLast.toFixed(3)}`,
+        Util.approx(janFirst, 1, 1e-9) && Util.approx(decLast, 1 / 365, 0.001));
+  }
+  {
+    // The as-of date re-stamps only on current-financial-position fields, not on
+    // forecast/scenario inputs (assumptions, ages, retirement expenses, allocation).
+    const yes = ["cpf.p1.oaBalance", "finances.combined.investableAssets",
+                 "finances.combined.assetBreakdown.cash", "income.p2.grossAnnual",
+                 "finances.separate.p1.monthlyContribution", "housing.propertyValue"];
+    const no  = ["assumptions.inflationRate", "profile.person1.fireAge",
+                 "finances.combined.annualExpensesRetirement", "portfolio.simple.usEquity",
+                 "finances.combined.oneOffGoals.0.amount"];
+    const allYes = yes.every(isFinancialPositionPath);
+    const noneNo = no.every(p => !isFinancialPositionPath(p));
+    add("V48", "As-of date re-stamps only on financial-position fields",
+        `position-paths→true, scenario/forecast-paths→false`,
+        `positionAllTrue=${allYes}, scenarioAllFalse=${noneNo}`,
+        allYes && noneNo);
+  }
+
   const tbody = document.querySelector("#validation-table tbody");
   tbody.innerHTML = "";
   let allPass = true;
@@ -9649,6 +9817,7 @@ window.Strategies = Strategies;
 window.Util = Util;
 window.setState = setState;
 window.setStructural = setStructural;
+window.setAsOfDate = setAsOfDate;
 window.setExpenseMode = setExpenseMode;
 window.commitOneOffGoal = commitOneOffGoal;
 window.editOneOffGoal = editOneOffGoal;
