@@ -9755,6 +9755,50 @@ function runValidation() {
         allYes && noneNo);
   }
 
+  // ── v1.6.2: post-65 fractional mortgage payoff (YoY fallback) ─────────
+  // V46 covers the pre-65 path via the CPF engine snapshots. Once CPF tracking
+  // ends (age > 65) the YoY projection falls back to charging the CPF-share as
+  // cash; that fallback must ALSO be scaled by the remaining-tenure fraction, or
+  // a fractional tenure paying off past 65 over-charges a full year in its
+  // half-year payoff row. Scenario: single, retired, mortgage 100% via CPF,
+  // tenure 7.5 yrs from age 60 → payoff at 67.5 (final partial year at age 67).
+  // With inflation 0 the mortgage is the only thing varying the expense line, so
+  // (expenses[66] − expenses[68]) is a full mortgage year and (expenses[67] −
+  // expenses[68]) must be exactly half.
+  {
+    const _saved = structuredClone(STATE);
+    let fullYr = NaN, halfYr = NaN, M = NaN;
+    try {
+      STATE.profile.coupleMode = false;
+      STATE.profile.person1.currentAge = 60;
+      STATE.profile.person1.fireAge = 60;          // retired throughout → flat base expenses
+      STATE.profile.person1.lifeExpectancy = 90;   // projection covers ages 66–68
+      STATE.assumptions.inflationRate = 0;         // no deflation → mortgage is isolable
+      STATE.finances.mode = "combined";
+      STATE.finances.combined.oneOffGoals = [];
+      STATE.finances.combined.expenseMode = "twoPhase";
+      STATE.finances.combined.annualExpensesRetirement = 40000;
+      STATE.housing.propertyValue = 0;
+      STATE.housing.propertyLoan = 300000;
+      STATE.housing.propertyRateAnnual = 0.025;
+      STATE.housing.propertyTenureYears = 7.5;     // payoff at 67.5 (final partial year past 65)
+      STATE.housing.propertyAppreciation = 0;
+      STATE.housing.split = { p1Pct: 1.0, p2Pct: 0.0 };
+      STATE.housing.p1 = { ...(STATE.housing.p1 || {}), cpfPct: 1.0 };  // 100% via CPF → post-65 fallback only
+      const R = computeAll();
+      const at = (a) => (R.yoy || []).find(r => r.age1 === a);
+      M = Mortgage.calcMonthlyPayment(300000, 0.025, 7.5) * 12;
+      fullYr = at(66).expenses - at(68).expenses;   // age 66: full mortgage year
+      halfYr = at(67).expenses - at(68).expenses;   // age 67: fractional payoff year (past 65)
+    } finally {
+      STATE = _saved;
+    }
+    add("V49", "Post-65 fractional mortgage payoff charges half, not a full year",
+        `age66 Δ≈full (${Util.fmtMoney(M)}), age67 Δ≈half (${Util.fmtMoney(M / 2)})`,
+        `age66 Δ=${Util.fmtMoney(fullYr)}, age67 Δ=${Util.fmtMoney(halfYr)}`,
+        Util.approx(fullYr, M, 1) && Util.approx(halfYr, M / 2, 1));
+  }
+
   const tbody = document.querySelector("#validation-table tbody");
   tbody.innerHTML = "";
   let allPass = true;
