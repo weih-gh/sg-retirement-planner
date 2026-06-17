@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-A Singapore-focused FIRE / retirement planner. The **entire app is one file**: `index.html` (~9,200 lines, HTML + CSS + JS). No build step, no package manager, no backend, no framework. The only runtime dependency is Chart.js (CDN) plus a small LZ-string helper (CDN). Hosted on GitHub Pages as a static file.
+A Singapore-focused FIRE / retirement planner. The **entire app is one file**: `index.html` (~9,500 lines, HTML + CSS + JS). No build step, no package manager, no backend, no framework. The only runtime dependency is Chart.js (CDN) plus a small LZ-string helper (CDN). Hosted on GitHub Pages as a static file.
 
 `data/` holds five CSVs that drive the historical simulations. `version.json` drives the in-app "update available" banner.
 
@@ -16,7 +16,7 @@ python3 -m http.server 8080   # → http://localhost:8080
 start index.html              # Windows, file:// (CSV fetch skipped, embedded fallback used)
 ```
 
-There is **no test framework**. The test suite is `runValidation()` (section 13, ~V1–V37+), which runs automatically on every page load and prints PASS/FAIL to the browser console. A failure flags a regression in the CPF / FIRE / portfolio / Monte-Carlo math. **Add a new V-test for any non-trivial calculation you introduce**, and check the console after any change to the math modules.
+There is **no test framework**. The test suite is `runValidation()` (section 13, ~V1–V49), which runs automatically on every page load and prints PASS/FAIL to the browser console. A failure flags a regression in the CPF / FIRE / portfolio / Monte-Carlo math. **Add a new V-test for any non-trivial calculation you introduce**, and check the console after any change to the math modules.
 
 ## Architecture
 
@@ -42,6 +42,16 @@ All mutations go through one of three paths, and **which one you pick determines
 - **`refreshComputed()` is the canonical place to make a derived label/hint/attribute react to a `setState` change without re-rendering (and thus without losing input/slider focus).** It patches elements by `id`. When you need a hint or computed span to track another input live, give it a stable `id` and patch it here — don't reach for a full re-render. (Example: the P1-Bridge age hint and disabled state are patched here as FIRE age changes.)
 - `renderAll()` (section 11 end) is the full rebuild, called on load / import / reset.
 
+### Time anchoring: the "as-of date" (v1.6.0)
+
+Time is anchored to a stored snapshot date, **not** live `new Date()`. `STATE.meta.asOfDate` (YYYY-MM-DD) is when the user's figures are "accurate as of", and it drives **first-year proration** (`Util.firstYearFraction(planAnchorDate())`) and the **engine's calendar year** (`planAnchorYear()` → CPF OW/AW ceilings, BHS & retirement-sum escalation, year-by-year labels). This exists to stop the projection silently drifting every time the plan is reopened.
+
+**For any time-dependent engine math use `planAnchorDate()` / `planAnchorYear()` — never `new Date()`** (display-only tooltips may stay live). The anchor auto-advances to today only when a *current-financial-position* field changes: `setState` calls `touchAsOfDate()` when `isFinancialPositionPath(path)` matches (balances, asset breakdown, CPF, current income, contribution, current "now" expenses, property value/loan). Scenario/forecast inputs (assumptions, ages, retirement/lean expenses, allocation %, growth, one-off goals, UI) deliberately do **not** re-anchor it. The user can also view/backdate it via the "Figures as of" control (`setAsOfDate`). `STATE.meta.lastFinancialEdit` drives the save indicator (so a reload no longer fakes a fresh timestamp).
+
+### One-off goals & the confirm-to-add pattern
+
+`oneOffGoals` is a **per-finance-slot array** (`finances.combined`, `finances.separate.p1`, `finances.separate.p2`) of discrete future lump-sum expenses `{ name, age, amount, years, inflation }` in today's $. It's additive — no `STATE_VERSION` bump (deepMerge returns arrays wholesale; consumers read `slot.oneOffGoals || []`). The shared helper `oneOffGoalsAtAge()` is consumed by the FIRE target (post-FIRE years only), the YoY projection (all ages, exact per-person), and the Monte-Carlo engines. The entry form uses **transient module-level draft state** (`_goalDraft` / `_goalEditIndex`) that is *not* in `STATE` and *not* fed to the engine until the user clicks "Add goal" — commit/edit/delete go through `commitOneOffGoal` / `editOneOffGoal` / `removeOneOffGoal`.
+
 ### Domain model: the 3-phase FIRE timeline
 
 The whole planner is structured around CPF-driven age boundaries. Expenses, returns, and drawdown are all modelled per phase:
@@ -65,7 +75,7 @@ State lives only in the browser: `localStorage` + the URL hash. `Storage.load()`
 
 ## Versioning & release discipline
 
-Three things must stay in lockstep on every release: the `VERSION` constant in `index.html` (search `const VERSION =`, ~line 1602), `version.json`, and a new `CHANGELOG.md` entry. The update banner compares bundled `VERSION` against the deployed `version.json`.
+Three things must stay in lockstep on every release: the `VERSION` constant in `index.html` (search `const VERSION =`, ~line 1662), `version.json`, and a new `CHANGELOG.md` entry. The update banner compares bundled `VERSION` against the deployed `version.json`.
 
 - **Patch** (x.y.Z) — bug fix / UI tweak / data extension.
 - **Minor** (x.Y.0) — new backwards-compatible feature.

@@ -9,6 +9,24 @@ Versioning follows [Semantic Versioning](https://semver.org/):
 
 ---
 
+## [1.6.2] — 2026-06-17
+
+### Fixed
+- **Self-check no longer fails spuriously on a reopened plan.** After v1.6.0 anchored the engine's calendar year to the as-of date, one self-check (V39, CPF take-home) still computed its expected value against the *live* year's OW ceiling. A plan saved in one year and reopened in the next (the exact scenario snapshot-dating exists for) could therefore flip the self-check pill to red on a perfectly correct engine. The check now keys to `planAnchorYear()` like the engine.
+- **Fractional mortgage paying off after age 65 no longer over-charges its final year.** The v1.5.3 fix scaled the partial payoff year for pre-65 years, but the post-65 cash-shortfall fallback (used when CPF tracking has ended) still charged a full year — re-introducing the one-year expense bump in the Year-by-Year table and lifetime chart for any fractional tenure ending past 65. Both partners' fallback branches are now scaled by the remaining-tenure fraction. New validation test **V49** (end-to-end Year-by-Year check that a fractional tenure paying off past 65 adds only a half year to the payoff-year expenses).
+
+### Security / reliability
+- **Error-banner message is no longer rendered as HTML.** The global error banner appended the exception text via `innerHTML`; an error string echoing attacker-influenced input (e.g. a malformed share link) could be parsed as markup. The detail text is now set via `textContent`.
+- **Invalid stored as-of date is now flagged.** `planAnchorDate()` silently fell back to live "today" on a malformed `meta.asOfDate` (legacy import / hand-edited share hash), quietly reintroducing the per-reopen drift snapshot-dating prevents. It now logs a warning when it has to fall back.
+
+### Changed
+- **Consistent time basis across the UI.** The Income-card and definitions OW-ceiling hints now display the as-of year's ceiling (via `planAnchorYear()`) instead of the live year's, matching the figures the engine actually used. The "First-year pro-rating" methodology card no longer points readers to "Portfolio & Returns" for the *Figures as of* control — it lives in the toolbar at the top of the planner.
+
+### Technical
+- The "Figures as of" input sync moved from `refreshComputed()` (which runs on every keystroke) into `touchAsOfDate()` (runs only when the date actually advances); `_renderAsOfControl()` reuses `planAnchorYear()` rather than re-deriving the year by string-slice. No engine-math or saved-state changes — no `STATE_VERSION` bump.
+
+---
+
 ## [1.6.1] — 2026-06-17
 
 ### Added
