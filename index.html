@@ -10,10 +10,17 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&family=Manrope:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<!-- Pinned + SRI-hashed: the browser refuses to run these if the bytes jsdelivr
+     serves don't match the SHA-384 below, so a compromised/altered CDN can't inject
+     code. Update the integrity hash whenever you bump a version. -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"
+        integrity="sha384-9nhczxUqK87bcKHh20fSQcTGD4qq5GhayNYSYWqwBkINBhOfQLg/P5HG5lF1urn4"
+        crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 <!-- LZ-string for URL-hash compression (~3KB). MIT-licensed.
      Used by Share to keep encoded plan URLs under email/chat truncation limits. -->
-<script src="https://cdn.jsdelivr.net/npm/lz-string@1.5.0/libs/lz-string.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/lz-string@1.5.0/libs/lz-string.min.js"
+        integrity="sha384-0d+Gr7vM4Drod8E3hXKgciWJSWbjD/opKLLygI9ktiWbuvlDwQLzU46wJ9s5gsp7"
+        crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 <style>
   :root {
     --bg: #F8F6ED;
@@ -65,6 +72,28 @@
     padding: 2px 10px; border-radius: 12px;
     font-size: 11px; font-weight: 600; letter-spacing: 0;
     text-transform: none;
+  }
+  /* Self-check pill: summarises the on-load validation harness. Quiet green when
+     all checks pass, loud red + clickable when any fail (jumps to Debug section). */
+  .selfcheck-pill {
+    display: none; margin-left: 6px;
+    padding: 2px 10px; border-radius: 12px;
+    font-size: 11px; font-weight: 600; letter-spacing: 0; text-transform: none;
+    vertical-align: middle;
+  }
+  .selfcheck-pill.ok   { background: rgba(90,128,104,.14); color: var(--good); }
+  .selfcheck-pill.fail { background: rgba(180,60,60,.14); color: var(--bad); cursor: pointer; }
+  /* Global error banner: shown by window.onerror / unhandledrejection so a thrown
+     exception surfaces as an actionable message instead of a silent broken page. */
+  .error-banner {
+    display: none; position: sticky; top: 0; z-index: 9999;
+    background: var(--bad, #b43c3c); color: #fff;
+    padding: 10px 16px; font-size: 13px; line-height: 1.4;
+    text-align: center;
+  }
+  .error-banner button {
+    color: #fff; font-weight: 600; text-decoration: underline;
+    background: none; border: none; cursor: pointer; font-size: 13px; padding: 0 4px;
   }
 
   /* Footer */
@@ -1478,10 +1507,13 @@
 </head>
 <body>
 
+<!-- Global error banner — populated by window.onerror / unhandledrejection (see init). -->
+<div class="error-banner" id="error-banner" role="alert"></div>
+
 <div class="app">
 
   <header class="app-header">
-    <div class="hero-label">Retirement Planner <span class="version-pill" id="version-pill">v…</span></div>
+    <div class="hero-label">Retirement Planner <span class="version-pill" id="version-pill">v…</span><span class="selfcheck-pill" id="selfcheck-pill" title="Engine self-checks"></span></div>
     <h1 class="hero-headline">
       A quiet place to plan<br>
       <span class="hero-accent">the rest of the journey.</span>
@@ -1659,7 +1691,7 @@
 //   • Footer attribution
 //   • Update-available banner (compared against version.json fetched from the deployed site)
 // Keep in sync with version.json at the repo root.
-const VERSION = "1.6.0";
+const VERSION = "1.6.1";
 
 const DATA_SOURCES = {
   repo: "weih-gh/sg-retirement-planner",
@@ -7736,7 +7768,7 @@ function _runMcForLifetimeChart(R) {
 
 function _drawLifetimeChart(labels, investable, cpfExclMa, fireAge, fireTotal) {
   const canvas = document.getElementById("lifetime-chart-canvas");
-  if (!canvas) return;
+  if (!canvas || !window.Chart) return;
   if (_lifetimeChartInstance) { _lifetimeChartInstance.destroy(); _lifetimeChartInstance = null; }
 
   const cs = getComputedStyle(document.documentElement);
@@ -9724,7 +9756,35 @@ function runValidation() {
       <td><span class="pill ${c.pass ? "pass" : "fail"}">${c.pass ? "PASS" : "FAIL"}</span></td>`;
     tbody.appendChild(tr);
   }
-  console.log(`Validation: ${checks.filter(c => c.pass).length}/${checks.length} passed`);
+  const passed = checks.filter(c => c.pass).length;
+  console.log(`Validation: ${passed}/${checks.length} passed`);
+  updateSelfCheckPill(passed, checks.length);
+}
+
+// Reflect the latest validation run in the always-visible header pill. Quiet green
+// when everything passes; loud red + clickable (jumps to the Debug section, which
+// holds the full pass/fail table) when any check fails.
+function updateSelfCheckPill(passed, total) {
+  const pill = document.getElementById("selfcheck-pill");
+  if (!pill) return;
+  const allPass = passed === total;
+  pill.className = "selfcheck-pill " + (allPass ? "ok" : "fail");
+  pill.textContent = allPass ? `✓ ${passed}/${total} checks` : `⚠ ${total - passed}/${total} failed`;
+  pill.style.display = "inline-block";
+  pill.title = allPass
+    ? "All engine self-checks passed"
+    : "Some engine self-checks failed — click for details";
+  if (allPass) {
+    pill.onclick = null;
+  } else {
+    pill.onclick = () => {
+      const dbg = document.getElementById("section-debug");
+      if (dbg) {
+        dbg.classList.remove("collapsed");
+        dbg.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+    };
+  }
 }
 
 /* ════════════════════════════════════════════════════════════════════════
@@ -9759,7 +9819,39 @@ function checkForUpdate() {
     .catch(() => { /* offline or fetch error — silently skip */ });
 }
 
+// Show the sticky global error banner. Called by the window error/rejection traps
+// below so an uncaught exception surfaces as an actionable message — "export your
+// data and reload" — instead of a silently half-rendered page. Your figures live in
+// localStorage and the URL, so a reload is safe; Export is offered as belt-and-braces.
+function showErrorBanner(msg) {
+  const banner = document.getElementById("error-banner");
+  if (!banner) return;
+  banner.innerHTML =
+    `<strong>Something went wrong.</strong> Your data is safe in this browser. ` +
+    `Try <button id="error-banner-reload">reloading</button>` +
+    `, or <button id="error-banner-export">export your plan</button> first.` +
+    (msg ? `<br><span style="opacity:.8;font-size:11px">${String(msg).slice(0, 200)}</span>` : "");
+  banner.style.display = "block";
+  const r = document.getElementById("error-banner-reload");
+  if (r) r.onclick = () => location.reload();
+  const ex = document.getElementById("error-banner-export");
+  if (ex) ex.onclick = () => { try { exportData(); } catch (_) { /* ignore */ } };
+}
+
 function init() {
+  // Register global error traps first so failures anywhere in init() (render, share
+  // decode, chart draw) surface in the banner rather than leaving a broken page.
+  window.addEventListener("error", e => showErrorBanner(e && e.message));
+  window.addEventListener("unhandledrejection", e =>
+    showErrorBanner(e && e.reason && (e.reason.message || e.reason)));
+
+  // CDN guard: Chart.js is loaded with SRI, so a tampered/unreachable CDN yields no
+  // global `Chart`. The chart renderers already no-op when it's missing; flag it so the
+  // user knows visuals are degraded (the numbers are computed in-page and stay correct).
+  if (typeof window.Chart === "undefined") {
+    console.warn("Chart.js unavailable — charts disabled, calculations unaffected.");
+  }
+
   // Surface the planner code version in the header pill + footer.
   const pill = document.getElementById("version-pill");
   if (pill) pill.textContent = "v" + VERSION;

@@ -9,6 +9,21 @@ Versioning follows [Semantic Versioning](https://semver.org/):
 
 ---
 
+## [1.6.1] — 2026-06-17
+
+### Added
+- **Visible self-check status.** The on-load validation harness (49 engine correctness checks) now reports into an always-visible pill in the header next to the version. It's a quiet green "✓ N/N checks" when everything passes, and turns red "⚠ N/M failed" — clickable to jump straight to the Debug · validation harness table — if any check regresses. Previously a failed self-check was only visible in the browser console.
+- **Global error banner.** An uncaught exception (e.g. a malformed share link, or a render error) now surfaces a sticky banner — "Something went wrong. Your data is safe in this browser." — with one-click **reload** and **export your plan** actions, instead of leaving a silently half-rendered page. Wired via `window.onerror` / `unhandledrejection`.
+
+### Security / reliability
+- **Subresource Integrity (SRI) on CDN scripts.** Chart.js and lz-string are now loaded with `integrity` SHA-384 hashes + `crossorigin`/`referrerpolicy`, so the browser refuses to execute them if the bytes served by jsdelivr don't match — closing a supply-chain gap where a compromised or man-in-the-middled CDN could inject code into a financial tool.
+- **Graceful CDN degradation.** If Chart.js fails to load (blocked or unreachable CDN), the planner now logs a warning and disables charts while keeping all calculations correct, rather than throwing. The lifetime chart gained the `window.Chart` guard the fan chart already had.
+
+### Technical
+- New `updateSelfCheckPill()` (called at the end of `runValidation()`) and `showErrorBanner()` (registered at the top of `init()`). No engine-math or saved-state changes — no `STATE_VERSION` bump.
+
+---
+
 ## [1.6.0] — 2026-06-02
 
 ### Added
