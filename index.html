@@ -1691,7 +1691,7 @@
 //   • Footer attribution
 //   • Update-available banner (compared against version.json fetched from the deployed site)
 // Keep in sync with version.json at the repo root.
-const VERSION = "1.6.1";
+const VERSION = "1.6.2";
 
 const DATA_SOURCES = {
   repo: "weih-gh/sg-retirement-planner",
@@ -3840,8 +3840,16 @@ function loadFromUrlHash() {
 // silently change the projection. Falls back to today if meta is missing.
 function planAnchorDate() {
   const s = STATE.meta && STATE.meta.asOfDate;
-  const d = s ? new Date(s + "T00:00:00") : new Date();
-  return isNaN(d.getTime()) ? new Date() : d;
+  if (!s) return new Date();
+  const d = new Date(s + "T00:00:00");
+  if (isNaN(d.getTime())) {
+    // Malformed stored date (legacy import / hand-edited share hash). Falling
+    // back to live today silently reintroduces the per-reopen drift this whole
+    // feature exists to prevent, so warn — it should never happen with valid state.
+    console.warn("planAnchorDate: invalid meta.asOfDate, falling back to today:", s);
+    return new Date();
+  }
+  return d;
 }
 function planAnchorYear() { return planAnchorDate().getFullYear(); }
 
@@ -3869,6 +3877,11 @@ function touchAsOfDate() {
   if (!STATE.meta) STATE.meta = {};
   STATE.meta.asOfDate = Util.todayISODate();
   STATE.meta.lastFinancialEdit = new Date().toISOString();
+  // Keep the visible "Figures as of" input in sync. setState doesn't re-render
+  // the card, and this is the only path that auto-advances the date without a
+  // re-render — so patch it here rather than on every keystroke in refreshComputed.
+  const asOfInput = document.getElementById("asof-date-input");
+  if (asOfInput && asOfInput.value !== STATE.meta.asOfDate) asOfInput.value = STATE.meta.asOfDate;
 }
 
 function setState(path, value) {
@@ -4243,7 +4256,7 @@ function renderProfileIncome() {
         ]})}
       </div>
       <div class="footnote">
-        OW above S$${CPF.getOwCeiling(new Date().getFullYear()).toLocaleString("en-SG")}/mo excluded from CPF (Ordinary Wage ceiling).
+        OW above S$${CPF.getOwCeiling(planAnchorYear()).toLocaleString("en-SG")}/mo excluded from CPF (Ordinary Wage ceiling).
         AW CPF ceiling = S$102,000 − annual OW subject to CPF.
         Higher income → higher projected CPF LIFE → lower FIRE target needed.
       </div>
@@ -5231,7 +5244,7 @@ function refreshSwrSlider() {
 // expense is edited; user can view, correct, or backdate it.
 function _renderAsOfControl() {
   const asOf = (STATE.meta && STATE.meta.asOfDate) || Util.todayISODate();
-  const anchorYear = parseInt(String(asOf).slice(0, 4), 10);
+  const anchorYear = planAnchorYear();   // single source of truth for the anchor's year
   const nowYear = new Date().getFullYear();
   const stale = Number.isFinite(anchorYear) && anchorYear < nowYear;
   const info = `
@@ -6238,12 +6251,8 @@ function renderFanChart(result) {
    ════════════════════════════════════════════════════════════════════════ */
 
 function refreshComputed() {
-  // v1.6.0: keep the "Figures as of" date input in sync when a financial-position
-  // edit auto-advances the snapshot date (setState doesn't re-render the card).
-  const asOfInput = document.getElementById("asof-date-input");
-  if (asOfInput && STATE.meta && STATE.meta.asOfDate && asOfInput.value !== STATE.meta.asOfDate) {
-    asOfInput.value = STATE.meta.asOfDate;
-  }
+  // (The "Figures as of" input is kept in sync inside touchAsOfDate — the only
+  // path that auto-advances the date without re-rendering the card.)
 
   // RSTU tax relief hints
   for (const p of ["p1", "p2"]) {
@@ -8479,8 +8488,9 @@ function computeYearlyProjection(R) {
       // v1.5.3: scale the final (possibly partial) mortgage year by its
       // remaining tenure fraction — matches the CPF engine, so a fractional
       // tenure (e.g. 19.5 yrs) doesn't charge a full year of cash in the
-      // half-year payoff year. (OA-shortfall below is already correctly scaled
-      // by the engine.)
+      // half-year payoff year. The pre-65 OA-shortfall snapshots below are
+      // already scaled by the engine; the post-65 fallbacks (no snapshot) are
+      // recomputed here, so they must be scaled by tenureFracThisYear too.
       const tenureFracThisYear = Math.max(0, Math.min(1, mortgageTenure - y));
       let nominalCash = cashMortgageAnnual * yearFraction * tenureFracThisYear;   // (1) deliberate cash
 
@@ -8488,14 +8498,14 @@ function computeYearlyProjection(R) {
       if (c1 && c1.age === age1) {
         nominalCash += c1.oaHousingShortfall || 0;
       } else if (age1 > 65 && mortgageNominalAnnualP1 > 0) {
-        nominalCash += mortgageNominalAnnualP1 * yearFraction;
+        nominalCash += mortgageNominalAnnualP1 * yearFraction * tenureFracThisYear;
       }
       // (2) OA shortfall — P2 (only runs in couple mode where P2 has a CPF share)
       if (couple && age2 != null && mortgageNominalAnnualP2 > 0) {
         if (c2 && c2.age === age2) {
           nominalCash += c2.oaHousingShortfall || 0;
         } else if (age2 > 65) {
-          nominalCash += mortgageNominalAnnualP2 * yearFraction;
+          nominalCash += mortgageNominalAnnualP2 * yearFraction * tenureFracThisYear;
         }
       }
       if (nominalCash > 0) {
@@ -8853,7 +8863,7 @@ function renderDefinitions() {
         <h3>OW &amp; AW ceilings</h3>
         <dl class="def-kv">
           <dt>OW — Ordinary Wage</dt>
-          <dd>Monthly salary subject to CPF, capped at the OW ceiling (currently <strong>${fmt$(CPF.getOwCeiling(new Date().getFullYear()))}/month</strong>). Income above this isn't CPF-contributed.</dd>
+          <dd>Monthly salary subject to CPF, capped at the OW ceiling (currently <strong>${fmt$(CPF.getOwCeiling(planAnchorYear()))}/month</strong>). Income above this isn't CPF-contributed.</dd>
           <dt>AW — Additional Wages</dt>
           <dd>Bonuses, 13th-month, performance pay. AW ceiling = <strong>$102,000 − annual OW subject to CPF</strong> for the year.</dd>
         </dl>
@@ -9036,7 +9046,7 @@ n = months (tenure years × 12)</pre>
       <div class="card" id="m-prorate">
         <h3>First-year pro-rating</h3>
         <div class="def-card-sub">Methodology</div>
-        <p>The first projected year only counts the portion of the calendar year remaining from your plan's <strong>as-of date</strong> (the "Figures as of" date in Portfolio &amp; Returns — when your balances, income and expenses were declared accurate). Day-precise pro-rate fraction:</p>
+        <p>The first projected year only counts the portion of the calendar year remaining from your plan's <strong>as-of date</strong> (the "Figures as of" date in the toolbar at the top of the planner — when your balances, income and expenses were declared accurate). Day-precise pro-rate fraction:</p>
         <pre class="def-formula">firstYearFraction = (days left in as-of year) ÷ (days in that year)</pre>
         <p>Applied to: wage-based CPF contributions, voluntary top-ups, housing deductions, CPF interest, income, expenses, and portfolio returns — all scaled by the remaining-year fraction for year 0 only. Anchoring to the as-of date (rather than live "today") keeps the projection stable when you reopen the plan; it re-anchors only when you edit a balance/income/expense or set a new date.</p>
         <span class="def-srcref">Util.firstYearFraction · planAnchorDate</span>
@@ -9593,7 +9603,7 @@ function runValidation() {
     const age = STATE.profile.person1.currentAge;
     const isSE = STATE.income.p1.employmentType === "selfEmployed";
     const rate = CPF.getContributionRates(age).employee;
-    const annualOWliable = Math.min(STATE.income.p1.grossAnnual, CPF.getOwCeiling(new Date().getFullYear()) * 12);
+    const annualOWliable = Math.min(STATE.income.p1.grossAnnual, CPF.getOwCeiling(planAnchorYear()) * 12);
     const awCapped = isSE ? 0 : Math.min(12000, Math.max(0, CONSTANTS.cpf.awAnnualCeiling - annualOWliable));
     const expectedDelta = (12000 - awCapped * rate) / 12;
     const actualDelta = withAW - baseTH;
@@ -9829,8 +9839,17 @@ function showErrorBanner(msg) {
   banner.innerHTML =
     `<strong>Something went wrong.</strong> Your data is safe in this browser. ` +
     `Try <button id="error-banner-reload">reloading</button>` +
-    `, or <button id="error-banner-export">export your plan</button> first.` +
-    (msg ? `<br><span style="opacity:.8;font-size:11px">${String(msg).slice(0, 200)}</span>` : "");
+    `, or <button id="error-banner-export">export your plan</button> first.`;
+  if (msg) {
+    // Append the error text via textContent (not innerHTML) — an exception
+    // message can echo attacker-influenced input (e.g. a malformed share-link
+    // payload), so it must never be parsed as HTML in the banner.
+    banner.appendChild(document.createElement("br"));
+    const detail = document.createElement("span");
+    detail.style.cssText = "opacity:.8;font-size:11px";
+    detail.textContent = String(msg).slice(0, 200);
+    banner.appendChild(detail);
+  }
   banner.style.display = "block";
   const r = document.getElementById("error-banner-reload");
   if (r) r.onclick = () => location.reload();
